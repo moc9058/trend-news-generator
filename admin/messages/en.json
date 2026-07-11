@@ -1,0 +1,110 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "drafts": "Drafts",
+    "posts": "Posts",
+    "categories": "Categories",
+    "sources": "Sources",
+    "prompts": "Prompts",
+    "channels": "Channels",
+    "settings": "Settings"
+  },
+  "common": {
+    "save": "Save",
+    "add": "Add",
+    "delete": "Delete",
+    "edit": "Edit",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "language": "Language",
+    "category": "Category",
+    "cadence": "Cadence",
+    "channel": "Channel",
+    "status": "Status",
+    "title": "Title",
+    "created": "Created",
+    "actions": "Actions",
+    "retry": "Retry",
+    "runNow": "Run now",
+    "none": "None",
+    "confirmDelete": "Delete this item?"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "pendingDrafts": "Drafts awaiting approval",
+    "recentPosts": "Recent posts",
+    "recentRuns": "Recent job runs",
+    "monthCost": "This month's LLM cost",
+    "threadsToken": "Threads token",
+    "expiresAt": "expires",
+    "daysLeft": "{days} days left",
+    "refreshError": "Threads token refresh FAILED — see runbook: re-run OAuth before expiry",
+    "noDrafts": "No drafts waiting",
+    "viewAll": "View all"
+  },
+  "drafts": {
+    "title": "Drafts",
+    "empty": "No drafts",
+    "editDraft": "Edit draft",
+    "summary": "Summary",
+    "body": "Body (markdown)",
+    "channelTexts": "Channel texts",
+    "xText": "X text",
+    "threadsText": "Threads text",
+    "preview": "Preview",
+    "publishTo": "Publish to",
+    "approvePublish": "Approve & publish",
+    "confirmPublish": "Publish this post to the selected channels?",
+    "charCount": "{count} chars",
+    "xWeighted": "X weighted length: {count}/280"
+  },
+  "posts": {
+    "title": "Post history",
+    "channelStatus": "Channel status",
+    "cost": "Cost"
+  },
+  "categories": {
+    "title": "Categories",
+    "name": "Name",
+    "slug": "Slug",
+    "searchHints": "Search hints (comma separated)",
+    "sortOrder": "Sort order",
+    "addTitle": "Add / update category"
+  },
+  "sources": {
+    "title": "Sources",
+    "type": "Type",
+    "urlOrQuery": "URL / query",
+    "lastFetched": "Last fetched",
+    "addTitle": "Add / update source",
+    "id": "ID (blank = auto)",
+    "url": "URL (rss)",
+    "query": "Query (gemini_grounded / ieee_xplore)",
+    "runCollect": "Run collect now",
+    "collectHint": "Test sources by running the collect job and checking the run result on the dashboard."
+  },
+  "prompts": {
+    "title": "Prompt templates",
+    "systemPrompt": "System prompt",
+    "userPrompt": "User prompt template",
+    "outlineSystemPrompt": "Outline system prompt (weekly/monthly stage 1)",
+    "outlineUserPrompt": "Outline user prompt template (weekly/monthly stage 1)",
+    "modelOverride": "Model override (blank = default)",
+    "placeholders": "Placeholders: '{items}' '{category}' '{date}' '{language}' (+daily: '{x_language}' '{threads_language}' '{notion_language}'; +article: '{theme}' '{outline}')",
+    "notSeeded": "not seeded"
+  },
+  "channels": {
+    "title": "Channel matrix",
+    "hint": "Language and on/off per category x cadence x channel. Daily posts publish automatically; weekly/monthly go through draft approval."
+  },
+  "settings": {
+    "title": "Settings",
+    "app": "Application",
+    "timezone": "Timezone",
+    "dailyRequireApproval": "Require approval for daily posts too (safety valve)",
+    "xAllowUrlOnDaily": "Allow URLs in daily X posts ($0.20/post instead of $0.015)",
+    "attachImages": "Attach collected images to posts",
+    "notionDatabaseId": "Notion database ID",
+    "jobs": "Manual job execution"
+  }
+}

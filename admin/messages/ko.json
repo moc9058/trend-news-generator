@@ -1,0 +1,110 @@
+{
+  "nav": {
+    "dashboard": "대시보드",
+    "drafts": "초안",
+    "posts": "게시 이력",
+    "categories": "카테고리",
+    "sources": "소스",
+    "prompts": "프롬프트",
+    "channels": "채널",
+    "settings": "설정"
+  },
+  "common": {
+    "save": "저장",
+    "add": "추가",
+    "delete": "삭제",
+    "edit": "편집",
+    "enabled": "활성",
+    "disabled": "비활성",
+    "language": "언어",
+    "category": "카테고리",
+    "cadence": "주기",
+    "channel": "채널",
+    "status": "상태",
+    "title": "제목",
+    "created": "생성 시각",
+    "actions": "작업",
+    "retry": "재시도",
+    "runNow": "지금 실행",
+    "none": "없음",
+    "confirmDelete": "이 항목을 삭제할까요?"
+  },
+  "dashboard": {
+    "title": "대시보드",
+    "pendingDrafts": "승인 대기 초안",
+    "recentPosts": "최근 게시물",
+    "recentRuns": "잡 실행 이력",
+    "monthCost": "이번 달 LLM 비용",
+    "threadsToken": "Threads 토큰",
+    "expiresAt": "만료",
+    "daysLeft": "{days}일 남음",
+    "refreshError": "Threads 토큰 갱신 실패 — runbook 참조: 만료 전에 재OAuth 필요",
+    "noDrafts": "승인 대기 초안이 없습니다",
+    "viewAll": "전체 보기"
+  },
+  "drafts": {
+    "title": "초안",
+    "empty": "초안이 없습니다",
+    "editDraft": "초안 편집",
+    "summary": "요약",
+    "body": "본문 (markdown)",
+    "channelTexts": "채널별 텍스트",
+    "xText": "X 텍스트",
+    "threadsText": "Threads 텍스트",
+    "preview": "미리보기",
+    "publishTo": "게시 대상",
+    "approvePublish": "승인 후 게시",
+    "confirmPublish": "선택한 채널에 게시할까요?",
+    "charCount": "{count}자",
+    "xWeighted": "X 가중 글자수: {count}/280"
+  },
+  "posts": {
+    "title": "게시 이력",
+    "channelStatus": "채널별 상태",
+    "cost": "비용"
+  },
+  "categories": {
+    "title": "카테고리",
+    "name": "이름",
+    "slug": "슬러그",
+    "searchHints": "검색 힌트 (쉼표 구분)",
+    "sortOrder": "정렬 순서",
+    "addTitle": "카테고리 추가/수정"
+  },
+  "sources": {
+    "title": "소스",
+    "type": "유형",
+    "urlOrQuery": "URL / 쿼리",
+    "lastFetched": "마지막 수집",
+    "addTitle": "소스 추가/수정",
+    "id": "ID (비우면 자동)",
+    "url": "URL (rss)",
+    "query": "쿼리 (gemini_grounded / ieee_xplore)",
+    "runCollect": "collect 지금 실행",
+    "collectHint": "소스 테스트는 collect 잡을 실행한 뒤 대시보드의 실행 결과에서 확인하세요."
+  },
+  "prompts": {
+    "title": "프롬프트 템플릿",
+    "systemPrompt": "시스템 프롬프트",
+    "userPrompt": "유저 프롬프트 템플릿",
+    "outlineSystemPrompt": "아웃라인 시스템 프롬프트 (주간/월간 1단계)",
+    "outlineUserPrompt": "아웃라인 유저 프롬프트 (주간/월간 1단계)",
+    "modelOverride": "모델 오버라이드 (비우면 기본값)",
+    "placeholders": "플레이스홀더: '{items}' '{category}' '{date}' '{language}' (일간: '{x_language}' '{threads_language}' '{notion_language}' / 기사: '{theme}' '{outline}')",
+    "notSeeded": "미생성"
+  },
+  "channels": {
+    "title": "채널 매트릭스",
+    "hint": "카테고리×주기×채널 단위의 언어와 ON/OFF. 일간은 자동 게시, 주간/월간은 초안 승인 후 게시됩니다."
+  },
+  "settings": {
+    "title": "설정",
+    "app": "애플리케이션",
+    "timezone": "시간대",
+    "dailyRequireApproval": "일간 게시물도 승인 필수 (안전장치)",
+    "xAllowUrlOnDaily": "일간 X 게시물에 URL 허용 ($0.015→$0.20/건)",
+    "attachImages": "수집한 이미지를 게시물에 첨부",
+    "notionDatabaseId": "Notion 데이터베이스 ID",
+    "jobs": "잡 수동 실행"
+  }
+}

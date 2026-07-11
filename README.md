@@ -20,7 +20,7 @@
 
 ```
 Cloud Scheduler (JST)
-  06:00 ─→ job-collect            Gemini grounding + RSS → Firestore items (URLハッシュで重複排除)
+  06:00 ─→ job-collect            Gemini grounding + RSS/arXiv/IEEE Xplore → Firestore items (URLハッシュで重複排除)
   08:00 ─→ job-generate-daily     gpt-5.4-mini → 短文生成 → X/Threads/Notion へ自動投稿
   月曜   ─→ job-generate-weekly    2段階生成(gpt-5.4-mini 選定 → gpt-5.5 長文) → 下書き
   月初   ─→ job-generate-monthly   同上(月次スケール、週次記事も入力)

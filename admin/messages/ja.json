@@ -1,0 +1,110 @@
+{
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "drafts": "下書き",
+    "posts": "投稿履歴",
+    "categories": "カテゴリ",
+    "sources": "ソース",
+    "prompts": "プロンプト",
+    "channels": "チャネル",
+    "settings": "設定"
+  },
+  "common": {
+    "save": "保存",
+    "add": "追加",
+    "delete": "削除",
+    "edit": "編集",
+    "enabled": "有効",
+    "disabled": "無効",
+    "language": "言語",
+    "category": "カテゴリ",
+    "cadence": "周期",
+    "channel": "チャネル",
+    "status": "ステータス",
+    "title": "タイトル",
+    "created": "作成日時",
+    "actions": "操作",
+    "retry": "リトライ",
+    "runNow": "今すぐ実行",
+    "none": "なし",
+    "confirmDelete": "この項目を削除しますか？"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "pendingDrafts": "承認待ちの下書き",
+    "recentPosts": "直近の投稿",
+    "recentRuns": "ジョブ実行履歴",
+    "monthCost": "今月のLLMコスト",
+    "threadsToken": "Threadsトークン",
+    "expiresAt": "有効期限",
+    "daysLeft": "残り{days}日",
+    "refreshError": "Threadsトークンの更新に失敗 — runbook参照: 期限前に再OAuthしてください",
+    "noDrafts": "承認待ちはありません",
+    "viewAll": "すべて表示"
+  },
+  "drafts": {
+    "title": "下書き",
+    "empty": "下書きはありません",
+    "editDraft": "下書き編集",
+    "summary": "要約",
+    "body": "本文 (markdown)",
+    "channelTexts": "チャネル別テキスト",
+    "xText": "X テキスト",
+    "threadsText": "Threads テキスト",
+    "preview": "プレビュー",
+    "publishTo": "投稿先",
+    "approvePublish": "承認して投稿",
+    "confirmPublish": "選択したチャネルへ投稿しますか？",
+    "charCount": "{count} 文字",
+    "xWeighted": "X 加重文字数: {count}/280"
+  },
+  "posts": {
+    "title": "投稿履歴",
+    "channelStatus": "チャネル別ステータス",
+    "cost": "コスト"
+  },
+  "categories": {
+    "title": "カテゴリ",
+    "name": "名前",
+    "slug": "スラッグ",
+    "searchHints": "検索ヒント（カンマ区切り）",
+    "sortOrder": "表示順",
+    "addTitle": "カテゴリの追加・更新"
+  },
+  "sources": {
+    "title": "ソース",
+    "type": "種別",
+    "urlOrQuery": "URL / クエリ",
+    "lastFetched": "最終取得",
+    "addTitle": "ソースの追加・更新",
+    "id": "ID（空欄=自動）",
+    "url": "URL (rss)",
+    "query": "クエリ (gemini_grounded / ieee_xplore)",
+    "runCollect": "collect を今すぐ実行",
+    "collectHint": "ソースのテストは collect ジョブを実行し、ダッシュボードの実行結果で確認してください。"
+  },
+  "prompts": {
+    "title": "プロンプトテンプレート",
+    "systemPrompt": "システムプロンプト",
+    "userPrompt": "ユーザープロンプトテンプレート",
+    "outlineSystemPrompt": "アウトライン用システムプロンプト（週次・月次の第1段階）",
+    "outlineUserPrompt": "アウトライン用ユーザープロンプト（週次・月次の第1段階）",
+    "modelOverride": "モデル上書き（空欄=デフォルト）",
+    "placeholders": "プレースホルダ: '{items}' '{category}' '{date}' '{language}'（日次: '{x_language}' '{threads_language}' '{notion_language}' / 記事: '{theme}' '{outline}'）",
+    "notSeeded": "未作成"
+  },
+  "channels": {
+    "title": "チャネルマトリクス",
+    "hint": "カテゴリ×周期×チャネル単位の言語とON/OFF。日次は自動投稿、週次・月次は下書き承認後に投稿されます。"
+  },
+  "settings": {
+    "title": "設定",
+    "app": "アプリケーション",
+    "timezone": "タイムゾーン",
+    "dailyRequireApproval": "日次投稿も承認必須にする（安全弁）",
+    "xAllowUrlOnDaily": "日次XにURLを許可（$0.015→$0.20/件）",
+    "attachImages": "収集画像を投稿に添付する",
+    "notionDatabaseId": "Notion データベースID",
+    "jobs": "ジョブ手動実行"
+  }
+}
