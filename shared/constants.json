@@ -1,0 +1,23 @@
+{
+  "cadences": ["daily", "weekly", "monthly"],
+  "channels": ["x", "threads", "notion"],
+  "postStatuses": [
+    "draft",
+    "approved",
+    "publishing",
+    "published",
+    "partially_published",
+    "failed"
+  ],
+  "channelStatuses": ["pending", "published", "failed", "skipped"],
+  "sourceTypes": ["rss", "gemini_grounded", "ieee_xplore"],
+  "languages": ["ja", "ko", "en"],
+  "jobTypes": [
+    "collect",
+    "generate_daily",
+    "generate_weekly",
+    "generate_monthly",
+    "refresh_threads_token",
+    "seed"
+  ]
+}

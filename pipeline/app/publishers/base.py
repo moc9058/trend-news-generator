@@ -1,0 +1,141 @@
+"""Publish orchestration shared by the daily job and the admin approve/retry
+endpoints.
+
+Order is notion → x → threads: long-form teasers need the Notion public URL.
+Idempotency: a channel with an externalId (or status published/skipped) is
+never re-published, and a persisted Threads containerId is resumed rather than
+recreated, so a crashed run can be retried without double-posting.
+"""
+
+from datetime import datetime, timezone
+
+from app.models import ChannelStatus, Post, PostStatus
+from app.publishers import notion, renderer, threads, x
+from app.repo import configs, posts
+from app.utils import gcs
+from app.utils.logging import get_logger
+
+log = get_logger(__name__)
+
+
+def _category_name(category_id: str) -> str:
+    for cat in configs.enabled_categories():
+        if cat.slug == category_id:
+            return cat.name
+    return category_id
+
+
+def _publish_notion(post: Post) -> None:
+    state = post.channels["notion"]
+    body = post.body or post.summary
+    page_id, url = notion.publish(
+        post.title,
+        body,
+        category=_category_name(post.categoryId),
+        cadence=post.cadence.value,
+        date_iso=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    )
+    state.externalId = page_id
+    state.pageId = page_id
+    state.url = url
+    state.status = ChannelStatus.published
+
+
+def _load_image(post: Post, state) -> tuple[bytes, str] | None:
+    if not state.imageGcsPath or not configs.app_settings().attachImages:
+        return None
+    try:
+        data = gcs.download_bytes(state.imageGcsPath)
+        ext = state.imageGcsPath.rsplit(".", 1)[-1]
+        return data, f"image/{'jpeg' if ext == 'jpg' else ext}"
+    except Exception as exc:
+        log.warning("image load failed", extra={"fields": {"path": state.imageGcsPath, "error": str(exc)}})
+        return None
+
+
+def _publish_x(post: Post, notion_url: str) -> None:
+    state = post.channels["x"]
+    text = state.text
+    app = configs.app_settings()
+    is_daily = post.cadence.value == "daily"
+    if notion_url and (not is_daily or app.xAllowUrlOnDaily):
+        text = renderer.append_url(text, notion_url, renderer.fits_x)
+    state.externalId = x.publish(
+        text,
+        thread_parts=state.threadParts or None,
+        image=_load_image(post, state),
+    )
+    state.url = f"https://x.com/i/status/{state.externalId}"
+    state.status = ChannelStatus.published
+
+
+def _publish_threads(post: Post, post_id: str, notion_url: str) -> None:
+    state = post.channels["threads"]
+    if not state.containerId:
+        text = state.text
+        if notion_url and post.cadence.value != "daily":
+            text = renderer.append_url(text, notion_url, renderer.fits_threads)
+        image_url = ""
+        if state.imageGcsPath and configs.app_settings().attachImages:
+            try:
+                image_url = gcs.signed_url(state.imageGcsPath)
+            except Exception as exc:
+                log.warning("signed url failed", extra={"fields": {"error": str(exc)}})
+        state.containerId = threads.create_container(text, image_url)
+        posts.update_channel(post_id, "threads", state)  # crash recovery point
+    threads.wait_until_ready(state.containerId)
+    state.externalId = threads.publish_container(state.containerId)
+    state.status = ChannelStatus.published
+
+
+def publish_post(post_id: str, only_channel: str = "") -> Post:
+    """Publish all pending enabled channels of a post (or a single channel on
+    retry). Returns the refreshed post."""
+    post = posts.get(post_id)
+    if post is None:
+        raise ValueError(f"post {post_id} not found")
+    posts.set_status(post_id, PostStatus.publishing)
+
+    notion_url = post.channels.get("notion").url if "notion" in post.channels else ""
+    order = ["notion", "x", "threads"]
+    for channel in order:
+        if only_channel and channel != only_channel:
+            continue
+        state = post.channels.get(channel)
+        if state is None or not state.enabled:
+            continue
+        if state.status in (ChannelStatus.published, ChannelStatus.skipped) or state.externalId:
+            continue
+        try:
+            if channel == "notion":
+                _publish_notion(post)
+                notion_url = post.channels["notion"].url
+            elif channel == "x":
+                _publish_x(post, notion_url)
+            else:
+                _publish_threads(post, post_id, notion_url)
+            state.error = ""
+        except Exception as exc:
+            state.status = ChannelStatus.failed
+            state.error = str(exc)[:1000]
+            log.error(
+                "channel publish failed",
+                extra={"fields": {"post": post_id, "channel": channel, "error": str(exc)}},
+            )
+        posts.update_channel(post_id, channel, state)
+
+    active = [s for s in post.channels.values() if s.enabled]
+    published = [s for s in active if s.status == ChannelStatus.published]
+    failed = [s for s in active if s.status == ChannelStatus.failed]
+    if failed and published:
+        final = PostStatus.partially_published
+    elif failed:
+        final = PostStatus.failed
+    else:
+        final = PostStatus.published
+    posts.set_status(
+        post_id, final,
+        publishedAt=datetime.now(timezone.utc) if published else None,
+    )
+    post.status = final
+    return post

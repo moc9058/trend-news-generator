@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Sample Tech Feed</title>
+    <link>https://example.com</link>
+    <item>
+      <title>AI chip breakthrough announced</title>
+      <link>https://example.com/news/ai-chip?utm_source=rss</link>
+      <pubDate>Fri, 10 Jul 2026 09:00:00 GMT</pubDate>
+      <description>A new chip architecture doubles inference speed.</description>
+      <media:content url="https://example.com/img/chip.jpg" type="image/jpeg"/>
+    </item>
+    <item>
+      <title>Quantum network milestone</title>
+      <link>https://example.com/news/quantum</link>
+      <pubDate>Fri, 10 Jul 2026 08:00:00 GMT</pubDate>
+      <description>Entanglement maintained over 100km of fiber.</description>
+    </item>
+    <item>
+      <title></title>
+      <link>https://example.com/broken</link>
+    </item>
+  </channel>
+</rss>
