@@ -4,12 +4,13 @@
 so there is no app-level auth here. All reads/writes for display go straight
 from the admin UI to Firestore."""
 
-import importlib
-from datetime import datetime, timezone
-
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+import google.auth
+import google.auth.transport.requests
+import httpx
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from app.config import get_settings
 from app.models import ChannelStatus, PostStatus
 from app.publishers.base import publish_post
 from app.repo import posts
@@ -91,22 +92,49 @@ def retry_channel(post_id: str, req: RetryRequest) -> dict:
     }
 
 
-def _run_job(module_name: str) -> None:
-    started = datetime.now(timezone.utc)
-    log.info("manual job start", extra={"fields": {"module": module_name}})
-    try:
-        importlib.import_module(module_name).main()
-    except Exception as exc:
-        log.error("manual job failed", extra={"fields": {"module": module_name, "error": str(exc)}})
-    finally:
-        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
-        log.info("manual job end", extra={"fields": {"module": module_name, "seconds": elapsed}})
+def _cloud_run_job_name(api_name: str) -> str:
+    """`generate_daily` -> `job-generate-daily` (the deployed Cloud Run Job)."""
+    return "job-" + api_name.replace("_", "-")
+
+
+def _trigger_job(api_name: str) -> None:
+    """Start a real Cloud Run Job execution (fire-and-forget).
+
+    Unlike an in-process run, the job runs on its own Cloud Run Job instance
+    with the job's own memory/timeout/retry settings, so a long collect or
+    generate finishes reliably even if this API instance scales down.
+    """
+    settings = get_settings()
+    creds, _ = google.auth.default(
+        scopes=["https://www.googleapis.com/auth/cloud-platform"],
+    )
+    creds.refresh(google.auth.transport.requests.Request())
+    url = (
+        f"https://run.googleapis.com/v2/projects/{settings.project_id}"
+        f"/locations/{settings.region}/jobs/{_cloud_run_job_name(api_name)}:run"
+    )
+    resp = httpx.post(
+        url,
+        headers={"Authorization": f"Bearer {creds.token}"},
+        timeout=30,
+    )
+    resp.raise_for_status()
 
 
 @app.post("/api/jobs/{name}/run", status_code=202)
-def run_job(name: str, background: BackgroundTasks) -> dict:
-    module = JOB_MODULES.get(name)
-    if module is None:
+def run_job(name: str) -> dict:
+    if name not in JOB_MODULES:
         raise HTTPException(400, f"unknown job {name}")
-    background.add_task(_run_job, module)
-    return {"accepted": True, "job": name}
+    job_name = _cloud_run_job_name(name)
+    try:
+        _trigger_job(name)
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text[:300]
+        log.error("job trigger failed", extra={"fields": {
+            "job": job_name, "status": exc.response.status_code, "body": detail}})
+        raise HTTPException(502, f"failed to start {job_name}: {detail}")
+    except Exception as exc:  # noqa: BLE001 — surface any auth/network failure
+        log.error("job trigger error", extra={"fields": {"job": job_name, "error": str(exc)}})
+        raise HTTPException(502, f"failed to start {job_name}: {exc}")
+    log.info("job triggered", extra={"fields": {"job": job_name}})
+    return {"accepted": True, "job": job_name}

@@ -16,19 +16,67 @@
 | `shared/` | Python/TypeScript 共有定数(cadence, channel, status) |
 | `docs/` | 認証情報の発行手順(`setup-credentials.md`)、運用手順(`runbook.md`) |
 
-## アーキテクチャ概要
+## クラウド構成図 + フロー
 
-```
-Cloud Scheduler (JST)
-  06:00 ─→ job-collect            Gemini grounding + RSS/arXiv/IEEE Xplore → Firestore items (URLハッシュで重複排除)
-  08:00 ─→ job-generate-daily     gpt-5.4-mini → 短文生成 → X/Threads/Notion へ自動投稿
-  月曜   ─→ job-generate-weekly    2段階生成(gpt-5.4-mini 選定 → gpt-5.5 長文) → 下書き
-  月初   ─→ job-generate-monthly   同上(月次スケール、週次記事も入力)
-  月曜   ─→ job-refresh-threads-token  Threads long-lived token を更新
+GCP プロジェクト `trend-news-generator`(asia-northeast1)。矢印の番号 ①〜④ が処理フロー。
 
-admin-ui (IAP) ──ID token──→ pipeline-api ──→ publish層(X / Threads / Notion)
-      └─────── firebase-admin で Firestore 直接読み書き
+```mermaid
+flowchart LR
+  subgraph EXT_IN["外部ソース"]
+    SRC["Gemini grounding<br/>RSS / arXiv / IEEE Xplore"]
+  end
+
+  subgraph GCP["GCP: trend-news-generator"]
+    SCHED["Cloud Scheduler ×5<br/>(JST, scheduler-sa)"]
+
+    subgraph RUN["Cloud Run Jobs(pipeline-sa, 同一イメージ)"]
+      JC["job-collect"]
+      JD["job-generate-daily"]
+      JW["job-generate-weekly<br/>job-generate-monthly"]
+      JT["job-refresh-threads-token"]
+    end
+
+    API["Cloud Run service<br/>pipeline-api(非公開)"]
+    ADMIN["Cloud Run service<br/>admin-ui + IAP(admin-sa)"]
+
+    FS[("Firestore<br/>items / posts / runs / 設定")]
+    GCS[("GCS<br/>*-media(画像)")]
+    SM[["Secret Manager<br/>APIキー ×7"]]
+    AR["Artifact Registry<br/>(Cloud Build でイメージ格納)"]
+  end
+
+  subgraph EXT_OUT["投稿先 / LLM"]
+    LLM["OpenAI<br/>gpt-5.4-mini / gpt-5.5"]
+    SNS["Notion → X → Threads<br/>(この順で投稿)"]
+  end
+
+  OP(["運用者(承認)"])
+
+  SCHED -- "①〜④ 起動" --> RUN
+  SRC -- "① 収集" --> JC
+  JC -- "① items(URLハッシュ重複排除)" --> FS
+  JC -- "① og:image" --> GCS
+  JD & JW <-- "② 生成" --> LLM
+  JD -- "② 短文 → 自動投稿" --> SNS
+  JW -- "② 長文下書き(draft)" --> FS
+  OP -- "IAP 認証" --> ADMIN
+  ADMIN <-- "Firestore 直接読み書き" --> FS
+  ADMIN -- "③ 承認・公開(ID token)" --> API
+  API -- "③ 投稿" --> SNS
+  JT -- "④ トークン更新(毎週)" --> SM
+  SM -.-> RUN
+  AR -.-> RUN
 ```
+
+### フロー概要(JST)
+
+| # | 時刻 | 処理 |
+|---|---|---|
+| ① | 毎日 06:00 | `job-collect` — 外部ソース収集 → Firestore `items` + GCS 画像 |
+| ② | 毎日 08:00 | `job-generate-daily` — 短文生成 → X(日)/Threads(韓)/Notion(英)へ自動投稿 |
+| ② | 月曜 07:00 / 毎月1日 07:00 | weekly / monthly — 2段階生成(gpt-5.4-mini 選定 → gpt-5.5 長文)→ 下書き |
+| ③ | 随時 | admin-ui で下書き承認 → pipeline-api 経由で Notion → X → Threads に投稿 |
+| ④ | 月曜 03:00 | `job-refresh-threads-token` — Threads long-lived token を Secret Manager に更新 |
 
 ## セットアップ
 

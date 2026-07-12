@@ -63,9 +63,25 @@ def test_run_unknown_job():
 
 
 def test_run_job_accepted(monkeypatch):
-    ran = []
-    monkeypatch.setitem(main.JOB_MODULES, "collect", "fake.module")
-    monkeypatch.setattr(main, "_run_job", lambda m: ran.append(m))
-    resp = client.post("/api/jobs/collect/run")
+    triggered = []
+    monkeypatch.setattr(main, "_trigger_job", lambda name: triggered.append(name))
+    resp = client.post("/api/jobs/generate_daily/run")
     assert resp.status_code == 202
-    assert ran == ["fake.module"]
+    # response carries the Cloud Run Job name; the trigger got the API name
+    assert resp.json() == {"accepted": True, "job": "job-generate-daily"}
+    assert triggered == ["generate_daily"]
+
+
+def test_run_job_trigger_failure_is_502(monkeypatch):
+    def boom(_name):
+        raise RuntimeError("metadata server unreachable")
+
+    monkeypatch.setattr(main, "_trigger_job", boom)
+    resp = client.post("/api/jobs/collect/run")
+    assert resp.status_code == 502
+    assert "job-collect" in resp.json()["detail"]
+
+
+def test_cloud_run_job_name_mapping():
+    assert main._cloud_run_job_name("generate_daily") == "job-generate-daily"
+    assert main._cloud_run_job_name("collect") == "job-collect"

@@ -40,7 +40,13 @@
     "daysLeft": "{days} days left",
     "refreshError": "Threads token refresh FAILED — see runbook: re-run OAuth before expiry",
     "noDrafts": "No drafts waiting",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "generate": "Content generation (manual)",
+    "generateHint": "Press \"① Collect\" to gather the latest items, then \"② Generate\". Daily auto-publishes to each channel; weekly/monthly create a draft (approve on the Drafts page). Watch progress in \"Recent job runs\" below.",
+    "collect": "① Collect",
+    "daily": "② Generate daily",
+    "weekly": "② Generate weekly",
+    "monthly": "② Generate monthly"
   },
   "drafts": {
     "title": "Drafts",

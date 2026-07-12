@@ -40,7 +40,13 @@
     "daysLeft": "残り{days}日",
     "refreshError": "Threadsトークンの更新に失敗 — runbook参照: 期限前に再OAuthしてください",
     "noDrafts": "承認待ちはありません",
-    "viewAll": "すべて表示"
+    "viewAll": "すべて表示",
+    "generate": "コンテンツ生成（手動実行）",
+    "generateHint": "「① 収集」で最新情報を集めてから、「② 生成」を押します。日次は各チャネルへ自動投稿、週次・月次は下書きを作成します（承認は下書きページで）。実行状況は下の「ジョブ実行履歴」で確認できます。",
+    "collect": "① 収集",
+    "daily": "② 日次生成",
+    "weekly": "② 週次生成",
+    "monthly": "② 月次生成"
   },
   "drafts": {
     "title": "下書き",

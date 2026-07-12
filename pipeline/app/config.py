@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
     openai_model_daily: str = "gpt-5.4-mini"
     openai_model_longform: str = "gpt-5.5"
-    gemini_model: str = "gemini-3-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     # threads-access-token secret name; the refresh job adds new versions.
     threads_token_secret_name: str = "threads-access-token"

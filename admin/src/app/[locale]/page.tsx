@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+import { ActionButton } from '@/components/ActionButton';
 import { Card, StatusBadge } from '@/components/ui';
+import { runJobNow } from '@/lib/actions';
 import {
   getChannelHealth, getDrafts, getMonthCostUsd, getRecentPosts, getRecentRuns,
 } from '@/lib/data';
@@ -38,6 +40,16 @@ export default async function Dashboard({
           {t('refreshError')}: {health.threadsRefreshError}
         </div>
       )}
+
+      <Card title={t('generate')}>
+        <p className="mb-3 text-xs text-slate-500">{t('generateHint')}</p>
+        <div className="flex flex-wrap gap-3">
+          <ActionButton action={runJobNow.bind(null, 'collect')} label={t('collect')} secondary />
+          <ActionButton action={runJobNow.bind(null, 'generate_daily')} label={t('daily')} />
+          <ActionButton action={runJobNow.bind(null, 'generate_weekly')} label={t('weekly')} />
+          <ActionButton action={runJobNow.bind(null, 'generate_monthly')} label={t('monthly')} />
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Card title={t('monthCost')}>

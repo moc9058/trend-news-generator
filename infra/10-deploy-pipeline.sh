@@ -45,6 +45,9 @@ for job in "${JOBS[@]}"; do
     --set-env-vars="$COMMON_ENV" \
     --set-secrets="$SECRET_ENV" \
     --command=python --args=-m,"$module"
+  # pipeline-api (as pipeline-sa) triggers these jobs for the admin "Run now" button
+  gcloud run jobs add-iam-policy-binding "job-${job}" --region="$REGION" \
+    --member="serviceAccount:${PIPELINE_SA}" --role=roles/run.invoker -q >/dev/null
 done
 
 echo "pipeline deployed. Seed once with:"
