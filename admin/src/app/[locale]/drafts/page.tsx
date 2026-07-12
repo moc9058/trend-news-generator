@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Card, StatusBadge } from '@/components/ui';
+import { deleteDraft } from '@/lib/actions';
 import { getDrafts } from '@/lib/data';
 
 export default async function DraftsPage({
@@ -18,6 +19,7 @@ export default async function DraftsPage({
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold">{t('title')}</h1>
+      <p className="text-xs text-slate-500">{t('autoDeleteNote')}</p>
       <Card>
         {drafts.length === 0 ? (
           <div className="text-sm text-slate-400">{t('empty')}</div>
@@ -29,6 +31,7 @@ export default async function DraftsPage({
                 <th>{tc('title')}</th>
                 <th>{tc('category')}</th>
                 <th>{tc('created')}</th>
+                <th>{tc('actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -43,6 +46,11 @@ export default async function DraftsPage({
                   <td className="text-xs text-slate-500">{d.categoryId}</td>
                   <td className="text-xs text-slate-400">
                     {d.createdAt.slice(0, 16).replace('T', ' ')}
+                  </td>
+                  <td>
+                    <form action={deleteDraft.bind(null, d.id)} className="inline">
+                      <button className="text-xs text-red-600 underline">{tc('delete')}</button>
+                    </form>
                   </td>
                 </tr>
               ))}

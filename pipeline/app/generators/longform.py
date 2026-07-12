@@ -76,9 +76,13 @@ def generate_for_category(category: Category, cadence: Cadence) -> Post | None:
         if weekly_block:
             items_block += "\n\nThis month's weekly articles:\n" + weekly_block
 
-    outline_user = (template.outlineUserPromptTemplate or "{items}").format(
+    keywords_str = ", ".join(template.focusKeywords)
+    outline_tpl = template.outlineUserPromptTemplate or "{items}"
+    outline_user = outline_tpl.format(
         items=items_block, category=category.name, date=today, language=lang,
+        keywords=keywords_str,
     )
+    outline_user = prompts.apply_keywords(outline_user, outline_tpl, template.focusKeywords)
     outline = generate_json(
         settings.openai_model_daily,
         template.outlineSystemPrompt or prompts.WEEKLY_OUTLINE_SYSTEM,
@@ -102,6 +106,10 @@ def generate_for_category(category: Category, cadence: Cadence) -> Post | None:
         outline="\n".join(f"- {s}" for s in outline.get("outline", [])),
         x_language=LANG_NAMES.get(cfg_x.language, cfg_x.language),
         threads_language=LANG_NAMES.get(cfg_th.language, cfg_th.language),
+        keywords=keywords_str,
+    )
+    article_user = prompts.apply_keywords(
+        article_user, template.userPromptTemplate, template.focusKeywords
     )
     model = template.modelOverride or settings.openai_model_longform
     article = generate_json(model, template.systemPrompt, article_user, usage)

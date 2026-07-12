@@ -110,7 +110,8 @@ flowchart TD
 `pipeline/app/collectors/gemini_grounded.py` の `GeminiGroundedCollector.collect()`。
 
 - **役割**: ソースが持つ検索テーマ(`source.query`)を 1 回のグラウンディング付き生成に渡し、直近 24〜48 時間の主要ニュース 5〜8 件を JSON で受け取って `RawItem` 化する。
-- **入出力**: `Source`(`query` を使用)→ `list[RawItem]`。
+- **入出力**: `Source`(`query` を使用)+ `focus_keywords`(任意)→ `list[RawItem]`。
+- **焦点キーワード**: `main()` はカテゴリごとに `configs.category_focus_keywords()`(同カテゴリの全カデンス `promptTemplates.focusKeywords` の和集合)を求め、それを `collect(source, focus_keywords)` に渡す。キーワードがあれば検索プロンプト末尾に「これらを重視せよ。ただし重要ニュースは引き続き拾え」という一文を足す('重視'であって'限定'ではない)。RSS / IEEE コレクタも同じ引数を受け取るが**無視する**(固定フィード・固定クエリのため。[base.py] のプロトコル)。キーワード未設定なら従来の挙動と一致する。
 - **呼び出し元**: `main()`。**呼び出し先**: `_extract_json_array()`、`_grounding_uris()`。
 - **外部アクセス**: Gemini API(`google-genai` SDK、モデルは `config.py` の `gemini_model`、既定 `gemini-3.5-flash`。ただし本番ジョブは env で上書きされている場合があるので変更時は両方確認)。`google_search` ツールを有効化し、temperature 0.2。
 - **要点**: プロンプトで「JSON 配列のみ・URL の捏造禁止・検索結果に現れた URL のみ」を指示。応答の各行から `url`(`http` 始まり必須)と `title` が揃うものだけ採用し、要約は 2,000 文字まで。グラウンディングの引用 URI 一覧は**同じ応答から生まれた全 `RawItem` に共通で**添付され、`Item.groundingCitations` として Firestore に残る(出典の追跡用)。

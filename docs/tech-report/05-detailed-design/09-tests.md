@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(8ファイル・50件)をどう実行し、結果をどう読むか
+- pipeline のテスト(9ファイル・58件)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -45,10 +45,10 @@ pytest -v -k "notion"
 **出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。コミット f703290 時点のコードでは全件成功し、次のようになります(所要 1〜2 秒)。
 
 ```text
-========================= 50 passed, 1 warning in 0.88s =========================
+========================= 58 passed, 1 warning in 2.16s =========================
 ```
 
-- `50 passed` — 50件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `58 passed` — 58件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -59,7 +59,7 @@ pytest -v -k "notion"
 
 **pytest** — Python の標準的なテスト実行ツール。`tests/` 内の `test_` で始まる関数を全部見つけて実行し、`assert 式`(「これは真のはず」という宣言)が偽になったら失敗として報告します。
 
-**pytest-asyncio と `asyncio_mode = "auto"`** — 非同期関数(`async def` で書かれた、待ち時間中に他の処理を進められる関数)のテストをそのまま書けるようにする追加設定です(`pipeline/pyproject.toml` で有効化)。ただし現在の 8 ファイルはすべて同期関数のテストで、この設定の出番はまだありません。将来 async のコードにテストを足しても追加設定なしで動く、という備えです。
+**pytest-asyncio と `asyncio_mode = "auto"`** — 非同期関数(`async def` で書かれた、待ち時間中に他の処理を進められる関数)のテストをそのまま書けるようにする追加設定です(`pipeline/pyproject.toml` で有効化)。ただし現在の 9 ファイルはすべて同期関数のテストで、この設定の出番はまだありません。将来 async のコードにテストを足しても追加設定なしで動く、という備えです。
 
 **respx** — HTTP クライアント httpx の通信を横取りし、実際のサーバーに届く前に偽の応答を返すライブラリです。これがあるため、X や Notion に本当に投稿することなく HTTP 呼び出しコードを検証できます。**ただし現在のテストコードに respx の import はまだ登場しません**。dev 依存として導入済みで、プロジェクト方針(CLAUDE.md)として「HTTP をモックするなら respx」と決まっているものの、現行のテストは HTTP に到達する一歩手前の層(パース関数・署名関数・整形関数)と、HTTP 呼び出し部を丸ごと差し替えたオーケストレーション層を対象にしているためです。新たに HTTP 層そのもののテストを書くときに使います(12章に例)。
 
@@ -208,6 +208,7 @@ pytest -v -k "notion"
 | `tests/test_notion_blocks.py` | 6 | `pipeline/app/publishers/notion.py` | [04-publish.md](04-publish.md) |
 | `tests/test_publish_orchestration.py` | 8 | `pipeline/app/publishers/base.py` | [04-publish.md](04-publish.md)、[03-generate.md](03-generate.md)(Post の契約) |
 | `tests/test_api.py` | 10 | `pipeline/app/main.py` | [05-pipeline-api.md](05-pipeline-api.md)、[06-ops-jobs.md](06-ops-jobs.md)(ジョブ手動実行) |
+| `tests/test_keywords_cleanup.py` | 8 | `generators/prompts.py`・`collectors/gemini_grounded.py`・`jobs/cleanup_drafts.py` | [02-collect.md](02-collect.md)(キーワード収集)、[03-generate.md](03-generate.md)(キーワード生成)、[06-ops-jobs.md](06-ops-jobs.md)(下書き削除) |
 
 ### 6. テストが無い領域(正直な一覧)と実運用での補い
 
@@ -315,7 +316,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `50 passed`(2026-07-12 時点)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `58 passed`(2026-07-13 時点)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

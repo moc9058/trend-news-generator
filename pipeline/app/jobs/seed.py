@@ -83,6 +83,7 @@ def main() -> None:
                 "outlineSystemPrompt": defaults.get("outlineSystemPrompt", ""),
                 "outlineUserPromptTemplate": defaults.get("outlineUserPromptTemplate", ""),
                 "modelOverride": "",
+                "focusKeywords": [],
                 "enabled": True,
             })
             for channel, language in CHANNEL_LANGUAGES.items():

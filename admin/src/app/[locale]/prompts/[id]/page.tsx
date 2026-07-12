@@ -32,6 +32,13 @@ export default async function PromptEditPage({
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="categoryId" value={tpl?.categoryId ?? categoryId} />
           <input type="hidden" name="cadence" value={tpl?.cadence ?? cadence} />
+          <label className="block rounded border border-sky-200 bg-sky-50 p-3 text-sm">
+            <span className="font-medium">{t('focusKeywords')}</span>
+            <input name="focusKeywords" className={inputCls}
+              defaultValue={(tpl?.focusKeywords ?? []).join(', ')}
+              placeholder="AI, semiconductors, monetary policy" />
+            <span className="mt-1 block text-xs text-slate-500">{t('focusKeywordsHint')}</span>
+          </label>
           <label className="block text-sm">
             {t('systemPrompt')}
             <textarea name="systemPrompt" rows={6} className={areaCls}

@@ -1,6 +1,6 @@
 # インフラスクリプト詳細設計 — infra/ の gcloud スクリプト読解
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-13
 
 ## 1. この文書で分かること
 
@@ -8,7 +8,7 @@
 - 各スクリプトが再実行して安全か(冪等性)、失敗したらどうなるかの考え方が分かります。
 - あわせて 2 つの Dockerfile(pipeline / 管理画面)の構造と、ジョブを追加するときにどこを触るかが分かります。
 
-本システムは Terraform のような IaC ツールを使わず、**gcloud コマンドを並べたシェルスクリプト**でインフラを構築します。規模が小さく(Cloud Run サービス 2 つ+ジョブ 6 本)、個人運用のため、状態管理ツールを持ち込むより「読めば分かるスクリプト」を選んだ構成です。なお、IAM ロールの網羅表・Cloud Run の設定値一覧・cron 一覧の「正」は [../04-parameters.md](../04-parameters.md) にあり、本書はそれを転記せず**スクリプトの読解**に集中します。システム全体の構成は [../02-architecture.md](../02-architecture.md) を参照してください。
+本システムは Terraform のような IaC ツールを使わず、**gcloud コマンドを並べたシェルスクリプト**でインフラを構築します。規模が小さく(Cloud Run サービス 2 つ+ジョブ 7 本)、個人運用のため、状態管理ツールを持ち込むより「読めば分かるスクリプト」を選んだ構成です。なお、IAM ロールの網羅表・Cloud Run の設定値一覧・cron 一覧の「正」は [../04-parameters.md](../04-parameters.md) にあり、本書はそれを転記せず**スクリプトの読解**に集中します。システム全体の構成は [../02-architecture.md](../02-architecture.md) を参照してください。
 
 実行順序は次の 1 本道です。番号がそのまま順序を表します(00 → 01 → 10 → 11 → 20)。
 
@@ -16,10 +16,10 @@
 flowchart LR
     PRE["前提: 認証情報を準備<br/>(setup-credentials.md)"] --> B00["00-bootstrap.sh<br/>API・DB・SA・IAM"]
     B00 --> S01["01-secrets.sh<br/>シークレット7種を登録"]
-    S01 --> P10["10-deploy-pipeline.sh<br/>pipeline-api + ジョブ6本"]
+    S01 --> P10["10-deploy-pipeline.sh<br/>pipeline-api + ジョブ7本"]
     P10 --> SEED["job-seed を手動実行<br/>(初期データ投入)"]
     SEED --> A11["11-deploy-admin.sh<br/>管理画面 + IAP"]
-    A11 --> SC20["20-schedulers.sh<br/>スケジューラ5本"]
+    A11 --> SC20["20-schedulers.sh<br/>スケジューラ6本"]
 ```
 
 順序に意味があります。00 で GCP の各機能(API)を有効化しサービスアカウントを作らないと、01 のシークレット登録も権限付与もできません。10 は 01 で作ったシークレットをデプロイ時に参照するので、シークレットが先に存在する必要があります。`job-seed`(Firestore にカテゴリ・ソース・プロンプトの初期データを入れるジョブ)は 10 で作られるため、その後に手動実行します。11 の管理画面は 10 でできた pipeline-api の URL を自動取得して埋め込むので 10 の後、20 のスケジューラは起動対象のジョブが存在しないと権限付与できないので最後です。各スクリプトの末尾には「次に実行すべきスクリプト」が echo で表示され、この順序を迷わないようになっています。認証情報(X / Threads / Notion / OpenAI / Gemini のキー類)の入手手順は [../../setup-credentials.md](../../setup-credentials.md) を参照してください。
@@ -28,12 +28,13 @@ flowchart LR
 
 | ファイル | 役割 |
 |---|---|
+| `deploy.sh`(リポジトリ直下) | 00→01→10→seed→11→20 を 1 コマンドで通す一括デプロイ補助スクリプト(4.6 参照) |
 | `infra/env.sh` | 全スクリプトが読み込む共通変数(プロジェクト ID・リージョン・SA 名・ジョブ一覧) |
 | `infra/00-bootstrap.sh` | 一度きりの土台作り: API 有効化、Firestore、GCS、Artifact Registry、SA と IAM |
 | `infra/01-secrets.sh` | 対話式でシークレット 7 種を Secret Manager に登録し、pipeline-sa に読み取り権限を付与 |
-| `infra/10-deploy-pipeline.sh` | pipeline イメージを Cloud Build でビルドし、pipeline-api(サービス)とジョブ 6 本をデプロイ |
+| `infra/10-deploy-pipeline.sh` | pipeline イメージを Cloud Build でビルドし、pipeline-api(サービス)とジョブ 7 本をデプロイ |
 | `infra/11-deploy-admin.sh` | 管理画面(admin)イメージをビルドし、IAP 付きでデプロイ、管理者を許可 |
-| `infra/20-schedulers.sh` | Cloud Scheduler 5 本を作成し、ジョブを定時起動させる |
+| `infra/20-schedulers.sh` | Cloud Scheduler 6 本を作成し、ジョブを定時起動させる |
 | `infra/firestore.indexes.json` | Firestore 複合インデックス定義のミラー(`firebase deploy --only firestore:indexes` 用) |
 | `pipeline/Dockerfile` / `pipeline/.dockerignore` | pipeline イメージの作り方と、イメージに入れないファイルの指定 |
 | `admin/Dockerfile` / `admin/.dockerignore` | 管理画面イメージ(2 ステージビルド)の作り方 |
@@ -56,7 +57,7 @@ flowchart LR
 | `AR_REPO` | `pipeline` | Docker イメージ置き場(Artifact Registry)のリポジトリ名 |
 | `IMAGE` | `${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/pipeline:latest` | pipeline イメージの完全な名前(置き場のアドレス+タグ) |
 | `PIPELINE_SA` / `ADMIN_SA` / `SCHEDULER_SA` | `pipeline-sa@…` など 3 つ | サービスアカウント(後述)のメールアドレス形式の ID |
-| `JOBS` | `(collect generate-daily generate-weekly generate-monthly refresh-threads-token seed)` | デプロイするジョブ 6 本の名前の配列。10 のループと 8 章の変更手順の起点 |
+| `JOBS` | `(collect generate-daily generate-weekly generate-monthly cleanup-drafts refresh-threads-token seed)` | デプロイするジョブ 7 本の名前の配列。10 のループと 8 章の変更手順の起点 |
 
 **サービスアカウント(SA)** とは「プログラムに持たせる Google アカウント」です。人間のアカウントと同様に権限(IAM ロール)を付与でき、本システムでは役割ごとに 3 つに分けています: パイプライン実行用の `pipeline-sa`、管理画面用の `admin-sa`、スケジューラ用の `scheduler-sa`。分ける理由は「それぞれに必要最小限の権限だけ与える」ためで、たとえば管理画面が乗っ取られてもシークレットは読めない、という守りになります。
 
@@ -138,7 +139,7 @@ flowchart LR
 
 ### 4.3 10-deploy-pipeline.sh — pipeline のビルドと 7 つのデプロイ
 
-**目的**: pipeline の Docker イメージを 1 つビルドし、そこから pipeline-api(常駐サービス)1 つとジョブ 6 本、計 7 つの Cloud Run リソースを作る。コードを変更したら再実行するのがこのシステムの「デプロイ」です(CI/CD はありません)。
+**目的**: pipeline の Docker イメージを 1 つビルドし、そこから pipeline-api(常駐サービス)1 つとジョブ 7 本、計 8 つの Cloud Run リソースを作る。コードを変更したら再実行するのがこのシステムの「デプロイ」です(CI/CD はありません)。
 
 **① イメージビルド** — `gcloud builds submit ../pipeline --tag "$IMAGE" --region="$REGION"`。ローカルに Docker が無くても、ソース一式を Cloud Build(クラウド上のビルドサーバー)へアップロードし、`pipeline/Dockerfile` に従ってビルドし、`--tag` で指定した Artifact Registry のアドレスへ push するところまで一括で行うコマンドです。アップロード対象からは `.gcloudignore`(無い場合は `.gitignore` 由来の既定)で不要物が除外され、さらにビルド時には `pipeline/.dockerignore` がイメージへの取り込みを絞ります(5 章)。
 
@@ -154,7 +155,7 @@ flowchart LR
 
 直後の `gcloud run services add-iam-policy-binding pipeline-api … --member=serviceAccount:${ADMIN_SA} --role=roles/run.invoker` で、**admin-sa にだけ**呼び出しを許可します。つまり pipeline-api を叩けるのは管理画面(のサーバー側)だけ、という閉じた経路になります。
 
-**④ ジョブ 6 本のデプロイ** — `env.sh` の `JOBS` 配列を for ループで回し、**同じイメージ**から起動コマンドだけ差し替えた `gcloud run jobs deploy job-<名前>` を 6 回実行します。ここがこのスクリプトの核心で、6.1 で抜粋・逐行解説します。要点は 3 つ:
+**④ ジョブ 7 本のデプロイ** — `env.sh` の `JOBS` 配列を for ループで回し、**同じイメージ**から起動コマンドだけ差し替えた `gcloud run jobs deploy job-<名前>` を 7 回実行します。ここがこのスクリプトの核心で、6.1 で抜粋・逐行解説します。要点は 3 つ:
 
 - イメージの既定起動コマンド(uvicorn で API サーバー)を `--command=python --args=-m,<モジュール>` で上書きし、`python -m app.jobs.collect` のような**単発バッチ**として動かす。
 - ジョブ名はハイフン区切り(Cloud Run の命名規則)、Python モジュール名はアンダースコア区切りなので、`${job//-/_}` で変換する。
@@ -181,7 +182,7 @@ flowchart LR
 
 ### 4.5 20-schedulers.sh — 定時起動の配線
 
-**目的**: Cloud Scheduler(GCP 版 cron。指定時刻に HTTP リクエストを撃つサービス)でジョブ 5 本を定時起動させる。
+**目的**: Cloud Scheduler(GCP 版 cron。指定時刻に HTTP リクエストを撃つサービス)でジョブ 6 本を定時起動させる。
 
 **仕組み** — Cloud Run Jobs には「実行せよ」という REST API があり、`https://run.googleapis.com/v2/projects/<PROJECT>/locations/<REGION>/jobs/<JOB>:run` へ POST すると 1 回実行されます。スクリプトはこの URL を組み立て、`gcloud scheduler jobs create http` で「毎日◯時にこの URL へ POST する」予約を作ります。主なフラグ:
 
@@ -191,7 +192,7 @@ flowchart LR
 
 `create_sched` 関数はまず `grant_invoker` で対象ジョブに scheduler-sa の `roles/run.invoker` を付与し(これが無いと POST が 403 で弾かれる)、次に `create … || update …` パターンでスケジューラを作成または更新します。update 側があるおかげで、**cron を変えて再実行すれば変更が反映**されます。
 
-作られる 5 本の対応(cron 値と時刻の正は [../04-parameters.md](../04-parameters.md)):
+作られる 6 本の対応(cron 値と時刻の正は [../04-parameters.md](../04-parameters.md)):
 
 | スケジューラ | 起動するジョブ |
 |---|---|
@@ -204,6 +205,25 @@ flowchart LR
 `job-seed` にはスケジューラが**ありません**。初期データ投入は一度きりの手動実行(`gcloud run jobs execute job-seed --region asia-northeast1 --wait`)だからです。なお、冒頭で取得している `PROJECT_NUMBER` は現在のスクリプト内では**使われていない変数**です(v2 API の URL がプロジェクト ID で組み立てられるため不要になった名残と見られます)。動作に影響はありませんが、読解時に「どこで使うのか」と探して迷わないよう記しておきます。
 
 **再実行**: 安全(create || update)。
+
+### 4.6 `deploy.sh` — 一括デプロイ補助スクリプト
+
+**目的**: 4.1〜4.5 の 5 本を毎回手で順番に叩く代わりに、`./deploy.sh` 1 コマンドで通せるようにする**薄いラッパー**。リポジトリ直下(`infra/` の外)に置かれており、内部で各スクリプトを`infra/`に`cd`してから順に呼び出すだけで、gcloud コマンド自体は一切増やしていません(ロジックの重複を避けるため)。
+
+**既定の動作**(オプション無しで実行): `00-bootstrap.sh` → `10-deploy-pipeline.sh` → `job-seed` 実行(`--wait`) → `11-deploy-admin.sh` → `20-schedulers.sh`、の順に実行します。
+
+**`01-secrets.sh` だけ既定でスキップされる理由** — 対話式でターミナルからの入力を待つため、他の 5 本のように無人実行できません。`deploy.sh` は「1 コマンドで最後まで自動で通る」ことを目的としているため、対話が必要なこの 1 本だけ既定から外し、含めたい場合は `--with-secrets` フラグで明示的にオプトインする設計です。
+
+**オプション一覧**(`./deploy.sh --help` でも表示):
+
+| フラグ | 意味 |
+|---|---|
+| `--with-secrets` | `01-secrets.sh` も実行する(初回セットアップで使う想定) |
+| `--skip-bootstrap` | `00-bootstrap.sh` を飛ばす(土台は既にある通常の再デプロイ向け) |
+| `--skip-seed` | `job-seed` の実行を飛ばす |
+| `--skip-schedulers` | `20-schedulers.sh` を飛ばす |
+
+**再実行**: 安全。呼び出す先の 5 本(01 を除く)がすべて冪等であることに支えられており、`deploy.sh` 自体は分岐と呼び出し順序を管理するだけで状態を持ちません。ただし `01-secrets.sh` を `--with-secrets` 付きで含めた場合は 4.2 と同じ注意(対話式・必須シークレット全再入力)がそのまま当てはまります。
 
 ## 5. Dockerfile 解説
 
@@ -228,7 +248,7 @@ Next.js アプリは「ビルドに必要な道具」と「動かすのに必要
 
 ### 6.1 `infra/10-deploy-pipeline.sh` のジョブ生成ループ
 
-同一イメージから 6 本のジョブを量産する、このスクリプトで最も密度の高い箇所です。
+同一イメージから 7 本のジョブを量産する、このスクリプトで最も密度の高い箇所です。
 
 ```bash
 echo "--- deploy jobs (same image, module entrypoints)"
@@ -302,7 +322,7 @@ fi
 | **スケジュール(時刻)を変える** | `infra/20-schedulers.sh` の cron 値を編集して再実行(update が効く)。[../04-parameters.md](../04-parameters.md) の一覧も更新 |
 | **Cloud Run のメモリ等を変える** | `infra/10-deploy-pipeline.sh` / `infra/11-deploy-admin.sh` の該当フラグを編集して再実行。値の正は [../04-parameters.md](../04-parameters.md) |
 | **管理者(管理画面に入れる人)を足す** | `gcloud beta iap web add-iam-policy-binding` を追加メールで実行(`infra/11-deploy-admin.sh` の④と同形)。既定管理者は `env.sh` の `ADMIN_EMAIL` |
-| **コードだけ変えた(デプロイし直す)** | pipeline なら `./10-deploy-pipeline.sh`、管理画面なら `./11-deploy-admin.sh` を再実行。これがこのシステムの唯一のデプロイ手段 |
+| **コードだけ変えた(デプロイし直す)** | pipeline なら `./10-deploy-pipeline.sh`、管理画面なら `./11-deploy-admin.sh` を再実行。両方まとめて確実に反映したいなら repoルートの `./deploy.sh --skip-bootstrap` |
 | **Firestore インデックスを足す** | `infra/00-bootstrap.sh` の `create_index` と `infra/firestore.indexes.json` の**両方**に追加(手動ミラー)して 00 を再実行 |
 | **リージョンを変える** | `env.sh` の `REGION` を変えれば新規プロジェクトでは全てそのリージョンに作られる。ただし**既存プロジェクトでは Firestore・GCS バケット・Artifact Registry のロケーションは変更不可**のため、実質「新プロジェクトに作り直してデータ移行」になる |
 | **共通 enum(`shared/constants.json`)を変える** | 変更後、ローカルで `npm run build`(prebuild)を走らせ `admin/src/lib/shared-constants.json` を更新・コミットしてから `./11-deploy-admin.sh`。コミットを忘れると Cloud Build ではコミット済みの古いコピーが使われる(5.2) |

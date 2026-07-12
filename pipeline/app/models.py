@@ -66,11 +66,14 @@ class PromptTemplate(BaseModel):
     categoryId: str
     cadence: Cadence
     systemPrompt: str
-    userPromptTemplate: str  # placeholders: {items} {category} {date} {language}
+    userPromptTemplate: str  # placeholders: {items} {category} {date} {language} {keywords}
     # weekly/monthly two-stage generation: stage-1 selection/outline prompts
     outlineSystemPrompt: str = ""
     outlineUserPromptTemplate: str = ""
     modelOverride: str = ""
+    # focus keywords for this category x cadence: steer collection (union per
+    # category) and give extra weight during generation. Empty = no steering.
+    focusKeywords: list[str] = []
     enabled: bool = True
 
 
@@ -148,6 +151,7 @@ class RunStats(BaseModel):
     postsCreated: int = 0
     published: int = 0
     failed: int = 0
+    deleted: int = 0
 
 
 class Run(BaseModel):

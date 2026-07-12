@@ -57,6 +57,7 @@ def generate_for_category(category: Category) -> Post | None:
         return None
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    keywords_str = ", ".join(template.focusKeywords)
     user_prompt = template.userPromptTemplate.format(
         items=prompts.format_items_for_prompt(recent),
         category=category.name,
@@ -65,6 +66,10 @@ def generate_for_category(category: Category) -> Post | None:
         x_language=LANG_NAMES.get(cfg_x.language, cfg_x.language),
         threads_language=LANG_NAMES.get(cfg_th.language, cfg_th.language),
         notion_language=LANG_NAMES.get(cfg_no.language, cfg_no.language),
+        keywords=keywords_str,
+    )
+    user_prompt = prompts.apply_keywords(
+        user_prompt, template.userPromptTemplate, template.focusKeywords
     )
     model = template.modelOverride or settings.openai_model_daily
     usage = TokenUsage()

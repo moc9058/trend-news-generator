@@ -24,6 +24,7 @@ JOB_MODULES = {
     "generate_daily": "app.jobs.generate_daily",
     "generate_weekly": "app.jobs.generate_weekly",
     "generate_monthly": "app.jobs.generate_monthly",
+    "cleanup_drafts": "app.jobs.cleanup_drafts",
     "refresh_threads_token": "app.jobs.refresh_threads_token",
     "seed": "app.jobs.seed",
 }

@@ -161,7 +161,7 @@
 | `errors` | array<string> | 発生したエラー文字列の蓄積 | 各ジョブ | admin 読 |
 | `costUsd` | number | その実行の LLM コスト概算(USD) | generate 系ジョブ | admin 読(`getMonthCostUsd()`) |
 
-注意: `shared/constants.json` の `jobTypes` には `seed` も含まれる(admin の「今すぐ実行」ボタンと pipeline-api の `JOB_MODULES` 用)が、**seed ジョブ自身は runs を書かない**ため、`jobType == "seed"` の runs ドキュメントは現状発生しない。また `types.ts` の `Run.stats` は `Record<string, number>` と緩い型で、`RunStats` の 5 フィールドを明示していない。
+注意: `shared/constants.json` の `jobTypes` には `seed` も含まれる(admin の「今すぐ実行」ボタンと pipeline-api の `JOB_MODULES` 用)が、**seed ジョブ自身は runs を書かない**ため、`jobType == "seed"` の runs ドキュメントは現状発生しない。また `types.ts` の `Run.stats` は `Record<string, number>` と緩い型で、`RunStats` の 6 フィールド(`collected` / `deduped` / `postsCreated` / `published` / `failed` / `deleted`。`deleted` は cleanup_drafts が削除件数を入れる)を明示していない。
 
 具体例: `{ "jobType": "collect", "startedAt": "2026-07-11T21:00:02Z", "finishedAt": "2026-07-11T21:03:40Z", "ok": true, "stats": { "collected": 42, "deduped": 17, "postsCreated": 0, "published": 0, "failed": 0 }, "errors": [], "costUsd": 0 }`
 
@@ -218,12 +218,13 @@
 |---|---|---|---|---|
 | `categoryId` / `cadence` | string | docID の 2 要素と同じ値 | seed、admin 書 | admin 読 |
 | `systemPrompt` | string | LLM への役割指示(daily は投稿文、weekly/monthly は本記事の執筆用) | seed、admin 書 | 生成 |
-| `userPromptTemplate` | string | 本文生成プロンプト。プレースホルダは `{items}` `{category}` `{date}` `{language}`(daily はさらに `{x_language}` `{threads_language}` `{notion_language}`、weekly/monthly の第 2 段は `{theme}` `{outline}` `{x_language}` `{threads_language}`) | seed、admin 書 | 生成 |
+| `userPromptTemplate` | string | 本文生成プロンプト。プレースホルダは `{items}` `{category}` `{date}` `{language}` `{keywords}`(daily はさらに `{x_language}` `{threads_language}` `{notion_language}`、weekly/monthly の第 2 段は `{theme}` `{outline}` `{x_language}` `{threads_language}`) | seed、admin 書 | 生成 |
 | `outlineSystemPrompt` / `outlineUserPromptTemplate` | string | weekly/monthly の 2 段階生成の第 1 段(記事の選定と骨子作り)用。daily では空 | seed、admin 書 | longform 生成 |
 | `modelOverride` | string | 空でなければ既定モデル名(`config.py`)を上書き | seed(空)、admin 書 | 生成 |
+| `focusKeywords` | string[] | このカテゴリ×カデンスで重視するキーワード。**収集**(同カテゴリの全カデンス分の和集合で Gemini Web 検索を方向づけ。`configs.category_focus_keywords()`)と**生成**(プロンプトに焦点指示を付加。`prompts.apply_keywords()`)の両方で効く。空 = 従来どおり。'重視'ポリシー(キーワード以外の重要ニュースも拾う) | seed(空)、admin 書 | 収集・生成 |
 | `enabled` | boolean | false なら生成スキップ | seed、admin 書 | `prompt_template()` |
 
-具体例(`promptTemplates/science-technology_daily`、プロンプト本文は省略): `{ "categoryId": "science-technology", "cadence": "daily", "systemPrompt": "You are a sharp, trustworthy news curator…", "userPromptTemplate": "Today is {date}. Category: {category}…", "outlineSystemPrompt": "", "outlineUserPromptTemplate": "", "modelOverride": "", "enabled": true }`
+具体例(`promptTemplates/science-technology_daily`、プロンプト本文は省略): `{ "categoryId": "science-technology", "cadence": "daily", "systemPrompt": "You are a sharp, trustworthy news curator…", "userPromptTemplate": "Today is {date}. Category: {category}…", "outlineSystemPrompt": "", "outlineUserPromptTemplate": "", "modelOverride": "", "focusKeywords": [], "enabled": true }`
 
 ### settings
 

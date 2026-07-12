@@ -74,10 +74,25 @@ export async function savePromptTemplate(formData: FormData): Promise<void> {
       outlineSystemPrompt: String(formData.get('outlineSystemPrompt') ?? ''),
       outlineUserPromptTemplate: String(formData.get('outlineUserPromptTemplate') ?? ''),
       modelOverride: String(formData.get('modelOverride') ?? ''),
+      focusKeywords: String(formData.get('focusKeywords') ?? '')
+        .split(',').map((s) => s.trim()).filter(Boolean),
       enabled: formData.get('enabled') === 'on',
     },
     { merge: true },
   );
+  revalidatePath('/', 'layout');
+}
+
+/** Bulk save for the dashboard's category x cadence automation grid. */
+export async function saveAutomation(formData: FormData): Promise<void> {
+  const ids = formData.getAll('ids').map(String);
+  const batch = db().batch();
+  for (const id of ids) {
+    batch.update(db().collection('promptTemplates').doc(id), {
+      enabled: formData.get(`enabled_${id}`) === 'on',
+    });
+  }
+  await batch.commit();
   revalidatePath('/', 'layout');
 }
 
@@ -128,6 +143,17 @@ export async function saveDraft(formData: FormData): Promise<void> {
     if (text !== null) updates[`channels.${channel}.text`] = String(text);
   }
   await db().collection('posts').doc(id).update(updates);
+  revalidatePath('/', 'layout');
+}
+
+/** Delete a draft. Guarded to status=draft so published posts can never be
+ * removed here (they have no delete path). Drafts hold no external artifacts
+ * (all channels pending), so a plain Firestore delete is sufficient. */
+export async function deleteDraft(postId: string): Promise<void> {
+  const snap = await db().collection('posts').doc(postId).get();
+  if (snap.exists && snap.data()?.status === 'draft') {
+    await db().collection('posts').doc(postId).delete();
+  }
   revalidatePath('/', 'layout');
 }
 

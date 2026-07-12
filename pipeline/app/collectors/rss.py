@@ -63,7 +63,9 @@ class RssCollector:
             headers={"User-Agent": "trend-news-generator/1.0"},
         )
 
-    def collect(self, source: Source) -> list[RawItem]:
+    def collect(
+        self, source: Source, focus_keywords: list[str] | None = None
+    ) -> list[RawItem]:  # focus_keywords ignored: RSS feeds are fixed URLs
         headers = {}
         if source.etag:
             headers["If-None-Match"] = source.etag

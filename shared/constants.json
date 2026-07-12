@@ -17,6 +17,7 @@
     "generate_daily",
     "generate_weekly",
     "generate_monthly",
+    "cleanup_drafts",
     "refresh_threads_token",
     "seed"
   ]

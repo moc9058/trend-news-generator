@@ -41,6 +41,8 @@
     "refreshError": "Threads token refresh FAILED — see runbook: re-run OAuth before expiry",
     "noDrafts": "No drafts waiting",
     "viewAll": "View all",
+    "automation": "Automation",
+    "automationHint": "Check/uncheck automatic generation per category x cadence, then press Save. Unchecked combinations are skipped during daily/weekly/monthly runs.",
     "generate": "Content generation (manual)",
     "generateHint": "Press \"① Collect\" to gather the latest items, then \"② Generate\". Daily auto-publishes to each channel; weekly/monthly create a draft (approve on the Drafts page). Watch progress in \"Recent job runs\" below.",
     "collect": "① Collect",
@@ -50,6 +52,7 @@
   },
   "drafts": {
     "title": "Drafts",
+    "autoDeleteNote": "Drafts left unapproved are auto-deleted after 30 days.",
     "empty": "No drafts",
     "editDraft": "Edit draft",
     "summary": "Summary",
@@ -91,12 +94,14 @@
   },
   "prompts": {
     "title": "Prompt templates",
+    "focusKeywords": "Focus keywords (comma-separated)",
+    "focusKeywordsHint": "Keywords to emphasise for this category x cadence. Prioritised in both collection (web search) and article generation — other major news is still picked up. Blank = no change. Lets you steer focus without touching the system prompt.",
     "systemPrompt": "System prompt",
     "userPrompt": "User prompt template",
     "outlineSystemPrompt": "Outline system prompt (weekly/monthly stage 1)",
     "outlineUserPrompt": "Outline user prompt template (weekly/monthly stage 1)",
     "modelOverride": "Model override (blank = default)",
-    "placeholders": "Placeholders: '{items}' '{category}' '{date}' '{language}' (+daily: '{x_language}' '{threads_language}' '{notion_language}'; +article: '{theme}' '{outline}')",
+    "placeholders": "Placeholders: '{items}' '{category}' '{date}' '{language}' '{keywords}' (+daily: '{x_language}' '{threads_language}' '{notion_language}'; +article: '{theme}' '{outline}'). Focus keywords are appended automatically, so '{keywords}' is optional.",
     "notSeeded": "not seeded"
   },
   "channels": {

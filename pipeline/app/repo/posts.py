@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from google.cloud import firestore
 
@@ -12,6 +12,34 @@ def create(post: Post) -> str:
     post.createdAt = datetime.now(timezone.utc)
     _, ref = db().collection(COLLECTION).add(post.model_dump(exclude={"id"}))
     return ref.id
+
+
+def delete(post_id: str) -> None:
+    db().collection(COLLECTION).document(post_id).delete()
+
+
+def old_drafts(older_than_days: int) -> list[Post]:
+    """Drafts whose createdAt is older than the cutoff. Filters status server-side
+    (single-field auto-index) and the age in Python — draft volume is small, so no
+    composite index is needed."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    docs = (
+        db()
+        .collection(COLLECTION)
+        .where(filter=firestore.FieldFilter("status", "==", PostStatus.draft.value))
+        .get()
+    )
+    out: list[Post] = []
+    for d in docs:
+        p = Post(id=d.id, **d.to_dict())
+        created = p.createdAt
+        if created is None:
+            continue
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        if created < cutoff:
+            out.append(p)
+    return out
 
 
 def get(post_id: str) -> Post | None:

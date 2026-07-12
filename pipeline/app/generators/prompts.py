@@ -105,6 +105,27 @@ DEFAULTS = {
 }
 
 
+def keyword_focus_line(keywords: list[str]) -> str:
+    """Instruction that makes the model prioritise the focus keywords (but still
+    cover the category's major developments — the '重視' policy, not '限定')."""
+    kw = ", ".join(k for k in keywords if k.strip())
+    if not kw:
+        return ""
+    return (
+        f"\n\nFOCUS KEYWORDS — give extra weight to stories about: {kw}. "
+        "Prioritise these topics, but still include the category's most important "
+        "developments even when unrelated to the keywords."
+    )
+
+
+def apply_keywords(user_prompt: str, template_text: str, keywords: list[str]) -> str:
+    """Append the keyword-focus line unless the template already places {keywords}
+    itself (avoids double emphasis)."""
+    if not keywords or "{keywords}" in template_text:
+        return user_prompt
+    return user_prompt + keyword_focus_line(keywords)
+
+
 def format_items_for_prompt(items, include_ids: bool = False, max_content: int = 0) -> str:
     lines = []
     for it in items:

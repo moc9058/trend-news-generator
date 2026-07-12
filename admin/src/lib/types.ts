@@ -54,6 +54,7 @@ export interface PromptTemplate {
   outlineSystemPrompt?: string;
   outlineUserPromptTemplate?: string;
   modelOverride?: string;
+  focusKeywords?: string[];
   enabled: boolean;
 }
 

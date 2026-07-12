@@ -8,7 +8,7 @@
 ```
 trend-news-generator/
 ├── pipeline/app/        # Python。収集・生成・投稿の本体(Cloud Run で動く)
-│   ├── jobs/            #   6 つのジョブの入口(collect, generate_daily, seed ...)
+│   ├── jobs/            #   7 つのジョブの入口(collect, generate_daily, cleanup_drafts, seed ...)
 │   ├── collectors/      #   収集(rss / gemini_grounded / ieee_xplore / enrich)
 │   ├── generators/      #   文章生成(daily / longform / OpenAI 呼び出し)
 │   ├── publishers/      #   投稿(notion / x / threads と全体指揮の base)

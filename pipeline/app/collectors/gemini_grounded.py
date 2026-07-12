@@ -49,10 +49,19 @@ class GeminiGroundedCollector:
     def __init__(self, client: genai.Client | None = None):
         self._client = client or genai.Client(api_key=get_settings().gemini_api_key)
 
-    def collect(self, source: Source) -> list[RawItem]:
+    def collect(
+        self, source: Source, focus_keywords: list[str] | None = None
+    ) -> list[RawItem]:
+        query = source.query
+        if focus_keywords:
+            query += (
+                "\n\nGive extra weight to stories about these focus keywords: "
+                + ", ".join(focus_keywords)
+                + " — but still return the most newsworthy stories in the topic."
+            )
         response = self._client.models.generate_content(
             model=get_settings().gemini_model,
-            contents=_PROMPT.format(query=source.query),
+            contents=_PROMPT.format(query=query),
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],
                 temperature=0.2,
@@ -77,7 +86,8 @@ class GeminiGroundedCollector:
             )
         log.info(
             "gemini grounded collect",
-            extra={"fields": {"query": source.query, "items": len(items)}},
+            extra={"fields": {"query": source.query, "keywords": focus_keywords or [],
+                              "items": len(items)}},
         )
         return items
 

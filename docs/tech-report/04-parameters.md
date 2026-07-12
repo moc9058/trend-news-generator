@@ -40,7 +40,7 @@ flowchart TB
     L2["② pipeline/.env<br>(ローカル開発のみ)"]
     L1["① config.py のデフォルト値"]
     PS["pydantic-settings<br>(config.py の Settings クラスが読み取り)"]
-    APP["アプリ本体<br>(pipeline-api と 6 つのジョブ)"]
+    APP["アプリ本体<br>(pipeline-api と 7 つのジョブ)"]
     SM --> L4
     L4 --> PS
     L3 --> PS
@@ -129,7 +129,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 - pipeline-api の役割は、投稿の公開(`/api/posts/{id}/publish`)・チャネル単位のリトライ(`/api/posts/{id}/retry-channel`)・ジョブの手動起動(`/api/jobs/{name}/run`。Cloud Run Jobs を呼ぶのではなく、同じイメージ内のジョブモジュールをプロセス内でバックグラウンド実行する)。
 - admin-ui の `PIPELINE_API_URL` はデプロイ時に pipeline-api の URL を取得して埋め込む。`GCS_BUCKET` は注入されているが**現行の admin コードには参照箇所がない**(将来用ないし残置)。
 
-### 4.2 ジョブ6種
+### 4.2 ジョブ7種
 
 全ジョブ共通: 同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-daily → `app.jobs.generate_daily`)。
 
@@ -139,6 +139,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | job-generate-daily | 日次投稿の生成+自動公開 | **0** | スケジューラ(毎日 08:00) |
 | job-generate-weekly | 週次長文の下書き生成 | **0** | スケジューラ(月曜 07:00) |
 | job-generate-monthly | 月次長文の下書き生成 | **0** | スケジューラ(毎月1日 07:00) |
+| job-cleanup-drafts | 未承認の下書きを30日で自動削除 | **0** | スケジューラ(毎日 04:00) |
 | job-refresh-threads-token | Threads トークンの自動更新 | **0** | スケジューラ(月曜 03:00) |
 | job-seed | 初期データ投入(カテゴリ・ソース・設定の既定値) | **1** | 手動のみ(スケジューラなし) |
 
@@ -157,7 +158,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ## 5. Cloud Scheduler 表
 
-**Cloud Scheduler** は、決めた時刻に HTTP リクエストを送る GCP のタイマー。`infra/20-schedulers.sh` の `create_sched()` が5本作成する(既存なら更新に切り替わる)。宛先はすべて Cloud Run Jobs の実行 API(`https://run.googleapis.com/v2/.../jobs/<ジョブ名>:run` への POST)。
+**Cloud Scheduler** は、決めた時刻に HTTP リクエストを送る GCP のタイマー。`infra/20-schedulers.sh` の `create_sched()` が6本作成する(既存なら更新に切り替わる)。宛先はすべて Cloud Run Jobs の実行 API(`https://run.googleapis.com/v2/.../jobs/<ジョブ名>:run` への POST)。
 
 **cron 式**は「分 時 日 月 曜日」の5欄で実行タイミングを表す記法(`*` は毎回、曜日の `1` は月曜)。すべて `--time-zone="Asia/Tokyo"` 指定なので JST で読める。
 
@@ -167,6 +168,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | sched-generate-daily | `0 8 * * *` | 毎日 08:00 | job-generate-daily | 同上 |
 | sched-generate-weekly | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-weekly | 同上 |
 | sched-generate-monthly | `0 7 1 * *` | 毎月1日 07:00 | job-generate-monthly | 同上 |
+| sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上 |
 | sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上 |
 
 - 認証は `--oauth-service-account-email` で scheduler-sa の **OAuth アクセストークン**を付ける方式。宛先が Google 自身の API(googleapis.com)の場合は OAuth を使う(自前サービス宛に使う OIDC ID トークンではない)。

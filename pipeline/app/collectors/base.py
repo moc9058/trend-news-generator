@@ -20,4 +20,8 @@ class RawItem(BaseModel):
 
 
 class Collector(Protocol):
-    def collect(self, source: Source) -> list[RawItem]: ...
+    # focus_keywords steers keyword-aware collectors (gemini_grounded); feed-based
+    # collectors (rss, ieee_xplore) accept and ignore it.
+    def collect(
+        self, source: Source, focus_keywords: list[str] | None = None
+    ) -> list[RawItem]: ...

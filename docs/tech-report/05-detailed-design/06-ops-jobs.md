@@ -1,13 +1,14 @@
-# 運用系ジョブ詳細設計 — Threads トークン自動更新と初期データ投入(seed)
+# 運用系ジョブ詳細設計 — Threads トークン自動更新・初期データ投入(seed)・下書き自動削除
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-13
 
-本システムには 6 つのジョブ(Cloud Run Jobs — 「起動 → 処理 → 終了」する使い切りの実行環境)があります。このうち収集・生成の 4 つは他章で解説済みで、本書は残る 2 つの「運用系」ジョブを扱います。
+本システムには 7 つのジョブ(Cloud Run Jobs — 「起動 → 処理 → 終了」する使い切りの実行環境)があります。このうち収集・生成の 4 つは他章で解説済みで、本書は残る 3 つの「運用系」ジョブを扱います。
 
 - **第1部: `refresh_threads_token`** — Threads の投稿用トークンを毎週自動更新するジョブ(README フロー④)
 - **第2部: `seed`** — カテゴリ・ソース・プロンプトなどの初期データを Firestore に投入する、初回のみ手動実行のジョブ
+- **第3部: `cleanup_drafts`** — 承認されないまま 30 日を過ぎた下書きを毎日自動削除するジョブ
 
-どちらも `shared/constants.json` の `jobTypes` に enum 値(`refresh_threads_token` / `seed`)として登録されており、実行履歴は他ジョブと同じく Firestore の `runs` コレクションに残ります(共通の仕組みは [01-pipeline-foundation.md](01-pipeline-foundation.md) 参照)。
+いずれも `shared/constants.json` の `jobTypes` に enum 値(`refresh_threads_token` / `seed` / `cleanup_drafts`)として登録されており、実行履歴は他ジョブと同じく Firestore の `runs` コレクションに残ります(共通の仕組みは [01-pipeline-foundation.md](01-pipeline-foundation.md) 参照)。
 
 ---
 
@@ -239,3 +240,43 @@ def _create_if_absent(collection: str, doc_id: str, data: dict) -> bool:
 | ジョブ種別の追加・改名 | `shared/constants.json` の `jobTypes` + `pipeline/app/main.py` の `JOB_MODULES` | constants.json 変更後は admin の再ビルドが必要 |
 
 障害時の一次対応(赤バナーが出た・トークンが完全失効した)は [../../runbook.md](../../runbook.md)、認証情報の発行手順は [../../setup-credentials.md](../../setup-credentials.md) にまとまっています。
+
+---
+
+## 第3部: cleanup_drafts — 未承認の下書きを自動削除(毎日 04:00 JST)
+
+### 1. この機能で分かること / なぜ必要か
+
+週次・月次の生成ジョブは記事を **`draft`(下書き)** として作り、管理画面で承認するまで公開しません([03-generate.md](03-generate.md))。承認されない下書きを放置すると Firestore に無限に溜まっていくため、このジョブが **作成から 30 日を過ぎた下書きを毎日削除**します。
+
+対象は `pipeline/app/jobs/cleanup_drafts.py` の `DRAFT_TTL_DAYS = 30` で決まります。**削除対象は `status == "draft"` のものだけ**で、`published` / `approved` などの投稿には一切触れません(誤削除の防止)。
+
+### 2. コードの流れ
+
+```python
+DRAFT_TTL_DAYS = 30
+
+def main() -> None:
+    run_id = runs.start("cleanup_drafts")
+    run = Run(jobType="cleanup_drafts")
+    for p in posts.old_drafts(DRAFT_TTL_DAYS):
+        try:
+            posts.delete(p.id)
+            run.stats.deleted += 1
+        except Exception as exc:
+            run.errors.append(f"delete {p.id}: {exc}")
+    run.ok = not run.errors
+    runs.finish(run_id, run)
+```
+
+- `posts.old_drafts(30)`(`pipeline/app/repo/posts.py`)— `status == "draft"` を Firestore 側で絞り込み(単一フィールドの自動インデックス)、`createdAt` が 30 日より古いかは Python 側で判定する。下書きは多くて数十件なので複合インデックスは不要。
+- `posts.delete(p.id)` — Firestore の該当ドキュメントを物理削除。下書きは全チャネルが `pending`(外部に何も出ていない)ので、Notion ページ等の後片付けは不要。
+- `run.stats.deleted` — 削除件数。`RunStats` に追加したカウンタ([../03-data-model.md](../03-data-model.md))で、ダッシュボードの実行履歴に出る。
+
+### 3. 起動と手動実行
+
+Cloud Scheduler の `sched-cleanup-drafts`(`infra/20-schedulers.sh`、cron `0 4 * * *` / `Asia/Tokyo` = **毎日 04:00 JST**)が `job-cleanup-drafts` を実行します。管理画面の設定ページからの手動実行(`/api/jobs/cleanup_drafts/run`)も可能です。手動で個別の下書きを消したいときは、下書き一覧の削除ボタン([07-admin-ui.md](07-admin-ui.md) の `deleteDraft`)を使います — こちらは 30 日を待たず即削除します。
+
+### 4. 関連テスト
+
+`pipeline/tests/test_keywords_cleanup.py` の `test_cleanup_drafts_deletes_old_and_records_count` が、`posts.old_drafts` / `posts.delete` / `runs.*` を monkeypatch で差し替え、対象が全件削除され `run.stats.deleted` に件数が入ることを固定しています。

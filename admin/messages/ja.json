@@ -41,6 +41,8 @@
     "refreshError": "Threadsトークンの更新に失敗 — runbook参照: 期限前に再OAuthしてください",
     "noDrafts": "承認待ちはありません",
     "viewAll": "すべて表示",
+    "automation": "自動実行設定",
+    "automationHint": "カテゴリ×周期ごとに自動生成のON/OFFをチェックボックスで選び、「保存」を押してください。チェックを外した組み合わせは日次・週次・月次の実行時にスキップされます。",
     "generate": "コンテンツ生成（手動実行）",
     "generateHint": "「① 収集」で最新情報を集めてから、「② 生成」を押します。日次は各チャネルへ自動投稿、週次・月次は下書きを作成します（承認は下書きページで）。実行状況は下の「ジョブ実行履歴」で確認できます。",
     "collect": "① 収集",
@@ -50,6 +52,7 @@
   },
   "drafts": {
     "title": "下書き",
+    "autoDeleteNote": "承認されない下書きは30日後に自動削除されます。",
     "empty": "下書きはありません",
     "editDraft": "下書き編集",
     "summary": "要約",
@@ -91,12 +94,14 @@
   },
   "prompts": {
     "title": "プロンプトテンプレート",
+    "focusKeywords": "焦点キーワード（カンマ区切り）",
+    "focusKeywordsHint": "このカテゴリ×周期で重視したいキーワード。収集（Web検索）と記事生成の両方で優先されます（重視。キーワード以外の重要ニュースも拾います）。空欄なら従来どおり。システムプロンプトを触らなくても、ここだけで焦点を指定できます。",
     "systemPrompt": "システムプロンプト",
     "userPrompt": "ユーザープロンプトテンプレート",
     "outlineSystemPrompt": "アウトライン用システムプロンプト（週次・月次の第1段階）",
     "outlineUserPrompt": "アウトライン用ユーザープロンプト（週次・月次の第1段階）",
     "modelOverride": "モデル上書き（空欄=デフォルト）",
-    "placeholders": "プレースホルダ: '{items}' '{category}' '{date}' '{language}'（日次: '{x_language}' '{threads_language}' '{notion_language}' / 記事: '{theme}' '{outline}'）",
+    "placeholders": "プレースホルダ: '{items}' '{category}' '{date}' '{language}' '{keywords}'（日次: '{x_language}' '{threads_language}' '{notion_language}' / 記事: '{theme}' '{outline}'）。焦点キーワードは自動付加されるため '{keywords}' は任意です。",
     "notSeeded": "未作成"
   },
   "channels": {

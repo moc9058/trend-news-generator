@@ -56,6 +56,28 @@ def prompt_template(category_id: str, cadence: Cadence) -> PromptTemplate | None
     return tpl if tpl.enabled else None
 
 
+def category_focus_keywords(category_id: str) -> list[str]:
+    """Union (order-preserving, case-insensitive dedupe) of focusKeywords across
+    a category's cadence templates. Collection is per-category and shared across
+    cadences, so it steers the web search with every keyword the user set for the
+    category — regardless of whether a given cadence template is enabled."""
+    ordered: list[str] = []
+    lower_seen: set[str] = set()
+    for cadence in Cadence:
+        snap = (
+            db().collection("promptTemplates")
+            .document(f"{category_id}_{cadence.value}").get()
+        )
+        if not snap.exists:
+            continue
+        for kw in (snap.to_dict() or {}).get("focusKeywords", []) or []:
+            k = str(kw).strip()
+            if k and k.lower() not in lower_seen:
+                lower_seen.add(k.lower())
+                ordered.append(k)
+    return ordered
+
+
 def channel_config(category_id: str, cadence: Cadence, channel: Channel) -> ChannelConfig:
     doc_id = f"{category_id}_{cadence.value}_{channel.value}"
     snap = db().collection("channelConfigs").document(doc_id).get()

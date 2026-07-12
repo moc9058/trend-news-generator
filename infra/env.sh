@@ -12,4 +12,4 @@ export PIPELINE_SA="pipeline-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export ADMIN_SA="admin-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export SCHEDULER_SA="scheduler-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 
-export JOBS=(collect generate-daily generate-weekly generate-monthly refresh-threads-token seed)
+export JOBS=(collect generate-daily generate-weekly generate-monthly cleanup-drafts refresh-threads-token seed)

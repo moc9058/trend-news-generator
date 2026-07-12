@@ -21,6 +21,7 @@ npm run build                       # prebuild で shared/constants.json を src
 
 # デプロイ(gcloud スクリプト。Terraform は不使用)
 infra/00-bootstrap.sh → 01-secrets.sh → 10-deploy-pipeline.sh → (job-seed 実行) → 11-deploy-admin.sh → 20-schedulers.sh
+./deploy.sh                         # 上記を一括実行するラッパー(01-secrets.sh は対話式のため既定スキップ。--help 参照)
 ```
 
 ## アーキテクチャ

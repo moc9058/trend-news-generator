@@ -83,10 +83,11 @@ def main() -> None:
     )
 
     for category in configs.enabled_categories():
+        focus_keywords = configs.category_focus_keywords(category.slug)
         for source in configs.enabled_sources(category.slug):
             collector = collectors[source.type]
             try:
-                raw_items = collector.collect(source)
+                raw_items = collector.collect(source, focus_keywords)
             except Exception as exc:
                 msg = f"source {source.id or source.url or source.query}: {exc}"
                 log.warning("collector failed", extra={"fields": {"error": msg}})

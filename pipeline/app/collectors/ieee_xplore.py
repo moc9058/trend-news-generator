@@ -50,7 +50,9 @@ class IeeeXploreCollector:
     def __init__(self, client: httpx.Client | None = None):
         self._client = client or httpx.Client(timeout=20)
 
-    def collect(self, source: Source) -> list[RawItem]:
+    def collect(
+        self, source: Source, focus_keywords: list[str] | None = None
+    ) -> list[RawItem]:  # focus_keywords ignored: IEEE query is set on the source
         api_key = get_settings().ieee_api_key
         if not api_key:
             log.warning(
