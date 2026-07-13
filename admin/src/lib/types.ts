@@ -14,7 +14,7 @@ export interface ChannelState {
 
 export interface Post {
   id: string;
-  cadence: string;
+  format: string;
   categoryId: string;
   status: string;
   title: string;
@@ -48,7 +48,7 @@ export interface Source {
 export interface PromptTemplate {
   id: string;
   categoryId: string;
-  cadence: string;
+  format: string;
   systemPrompt: string;
   userPromptTemplate: string;
   outlineSystemPrompt?: string;
@@ -61,7 +61,7 @@ export interface PromptTemplate {
 export interface ChannelConfig {
   id: string;
   categoryId: string;
-  cadence: string;
+  format: string;
   channel: string;
   enabled: boolean;
   language: string;
@@ -80,8 +80,8 @@ export interface Run {
 
 export interface AppSettingsDoc {
   timezone: string;
-  dailyRequireApproval: boolean;
-  xAllowUrlOnDaily: boolean;
+  shortRequireApproval: boolean;
+  xAllowUrlOnShort: boolean;
   attachImages: boolean;
 }
 

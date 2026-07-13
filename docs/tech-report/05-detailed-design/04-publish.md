@@ -25,7 +25,7 @@
 | `pipeline/app/utils/retry.py` | `api_retry`(自動再試行)と `PermanentPublishError`(基盤は [01-pipeline-foundation.md](01-pipeline-foundation.md)) |
 | `pipeline/app/repo/posts.py` | 投稿状態の Firestore 保存(`update_channel()` / `set_status()`) |
 | `pipeline/app/models.py` | `ChannelState` / `PostStatus` / `ChannelStatus`(スキーマは [../03-data-model.md#posts](../03-data-model.md#posts)) |
-| `pipeline/app/jobs/generate_daily.py` | 呼び出し元①: 日次ジョブ。生成直後に自動で `publish_post()` を呼ぶ |
+| `pipeline/app/jobs/generate_short.py` | 呼び出し元①: 短文ジョブ。生成直後に自動で `publish_post()` を呼ぶ |
 | `pipeline/app/main.py` | 呼び出し元②: pipeline-api の承認・リトライ([05-pipeline-api.md](05-pipeline-api.md)) |
 | `admin/src/lib/textLimits.ts` | 管理画面用の文字数ルール近似ミラー(TypeScript 実装) |
 | `pipeline/tests/test_publish_orchestration.py` ほか 3 本 | 本章の挙動を固定するテスト(§8) |
@@ -52,14 +52,14 @@ flowchart TD
 
 ## 4. 処理の流れ
 
-1. **入口は 2 つ。** ① 日次ジョブ `pipeline/app/jobs/generate_daily.py` — 生成した post が `approved`(承認不要設定)なら即 `publish_post()` を呼ぶ。② pipeline-api(`pipeline/app/main.py`)— 管理画面からの承認公開(`/api/posts/{id}/publish`)と失敗チャネルの再試行(`/api/posts/{id}/retry-channel`、`only_channel` 指定で 1 チャネルだけ実行)。エンドポイントの仕様は [05-pipeline-api.md](05-pipeline-api.md)。
+1. **入口は 2 つ。** ① 短文ジョブ `pipeline/app/jobs/generate_short.py` — 生成した post が `approved`(承認不要設定)なら即 `publish_post()` を呼ぶ。② pipeline-api(`pipeline/app/main.py`)— 管理画面からの承認公開(`/api/posts/{id}/publish`)と失敗チャネルの再試行(`/api/posts/{id}/retry-channel`、`only_channel` 指定で 1 チャネルだけ実行)。エンドポイントの仕様は [05-pipeline-api.md](05-pipeline-api.md)。
 2. **post の取得と `publishing` への遷移。** `posts.get()` で Firestore から post を読み、存在しなければ `ValueError`。存在すれば `posts.set_status()` で status を `publishing` に更新する(管理画面で「公開中」と表示され、pipeline-api 側の二重公開ガードにも使われる)。
 3. **Notion URL の初期化。** `notion_url` は post に既に保存されている Notion チャネルの `url` から初期化する。これにより「Notion は前回成功済みで X だけ再試行」というリトライでも、ティーザーに付ける URL が手に入る。
-4. **公開順序は `["notion", "x", "threads"]` で固定。** 週次・月次の長文は Notion に全文を置き、X/Threads にはティーザー+Notion 公開 URL を流す設計のため、**URL の供給元である Notion を必ず先に公開する必要がある**。この順序は `pipeline/app/publishers/base.py` の `publish_post()` にリテラルで書かれている。
+4. **公開順序は `["notion", "x", "threads"]` で固定。** 記事(article)の長文は Notion に全文を置き、X/Threads にはティーザー+Notion 公開 URL を流す設計のため、**URL の供給元である Notion を必ず先に公開する必要がある**。この順序は `pipeline/app/publishers/base.py` の `publish_post()` にリテラルで書かれている。
 5. **チャネル毎のスキップ判定(冪等性の要)。** 各チャネルについて、(a) `only_channel` 指定時は対象外チャネル、(b) `ChannelState` が無い・`enabled=False`、(c) status が `published` または `skipped`、(d) `externalId` が既に入っている——のいずれかならスキップ。コードは §6-E 参照。
 6. **Notion 公開(`_publish_notion()`)。** `post.body`(無ければ `post.summary`)の Markdown をブロック列へ変換し、Trend News データベースにページを作成。返ってきた page_id と URL を `externalId` / `pageId` / `url` に保存し、status を `published` にする。
-7. **X 公開(`_publish_x()`)。** 本文は生成時に `ChannelState.text` へ保存済み。Notion URL は「日次以外」または「日次でも `settings/app` の `xAllowUrlOnDaily` が有効」のときだけ `renderer.append_url()` で末尾に付与する(日次は既定で URL なし——X は URL 付き投稿の単価が高いため。数値は [../04-parameters.md](../04-parameters.md))。画像があれば GCS からダウンロードしてメディアアップロードし、`threadParts`(生成時に分割済みの返信チェーン)があればそれを順に投稿する。先頭ツイート ID が `externalId` になり、`url` は `https://x.com/i/status/{id}` 形式。
-8. **Threads 公開(`_publish_threads()`)。** Threads は「container(公開前の投稿の器)を作る → 処理完了を待つ → 公開する」という 2 段階 API。container 作成直後に `containerId` を Firestore へ保存するのがクラッシュ復旧の要(§6-B)。URL 付与は「日次以外」のみ(X と違い設定による例外なし)。画像は GCS の署名 URL(期限付きでダウンロードを許可する URL)として渡す。
+7. **X 公開(`_publish_x()`)。** 本文は生成時に `ChannelState.text` へ保存済み。Notion URL は「短文以外」または「短文でも `settings/app` の `xAllowUrlOnShort` が有効」のときだけ `renderer.append_url()` で末尾に付与する(短文は既定で URL なし——X は URL 付き投稿の単価が高いため。数値は [../04-parameters.md](../04-parameters.md))。画像があれば GCS からダウンロードしてメディアアップロードし、`threadParts`(生成時に分割済みの返信チェーン)があればそれを順に投稿する。先頭ツイート ID が `externalId` になり、`url` は `https://x.com/i/status/{id}` 形式。
+8. **Threads 公開(`_publish_threads()`)。** Threads は「container(公開前の投稿の器)を作る → 処理完了を待つ → 公開する」という 2 段階 API。container 作成直後に `containerId` を Firestore へ保存するのがクラッシュ復旧の要(§6-B)。URL 付与は「短文以外」のみ(X と違い設定による例外なし)。画像は GCS の署名 URL(期限付きでダウンロードを許可する URL)として渡す。
 9. **チャネル毎の結果保存。** 成功時は `error` を空にし、失敗時は status を `failed`・`error` に例外メッセージ(先頭 1000 文字)を入れて、いずれも `posts.update_channel()` で `channels.{channel}` フィールドを即時更新する。
 10. **最終 status の集計。** `enabled=True` のチャネルだけを母集団に、`failed` と `published` が混在すれば `partially_published`、`failed` のみなら `failed`、それ以外は `published`(全チャネルがスキップでも `published` になる)。1 チャネルでも成功していれば `publishedAt` に現在時刻(UTC)を記録する。
 
@@ -69,9 +69,9 @@ flowchart TD
 
 #### `publish_post(post_id, only_channel="") -> Post`
 
-- 役割: 上記フロー全体の実行。日次ジョブと pipeline-api の両方から呼ばれる唯一の公開入口。
+- 役割: 上記フロー全体の実行。短文ジョブと pipeline-api の両方から呼ばれる唯一の公開入口。
 - 入出力: 入力は post のドキュメント ID と(リトライ時のみ)対象チャネル名。出力は status 更新済みの `Post`。post が無ければ `ValueError`。
-- 呼び出し元 → 先: `jobs/generate_daily.py` / `main.py` → `_publish_notion()` / `_publish_x()` / `_publish_threads()`、`posts.set_status()` / `posts.update_channel()`。
+- 呼び出し元 → 先: `jobs/generate_short.py` / `main.py` → `_publish_notion()` / `_publish_x()` / `_publish_threads()`、`posts.set_status()` / `posts.update_channel()`。
 - 外部アクセス: Firestore(`posts` の読み書き)。
 - 要点: チャネル単位の try/except で失敗を隔離。例外は握りつぶさず `ChannelState.failed` + `error` として保存する。
 
@@ -89,7 +89,7 @@ flowchart TD
 - 入出力: `state.text`・`state.threadParts`・画像を `x.publish()` へ。戻りの先頭ツイート ID を `externalId` に。
 - 呼び出し元 → 先: `publish_post()` → `renderer.append_url()`、`_load_image()`、`x.publish()`。
 - 外部アクセス: X API(間接)、GCS(画像、間接)。
-- 要点: URL 付与条件は「`notion_url` があり、かつ日次でない or `xAllowUrlOnDaily` 有効」。なお `append_url()` は `text` にしか作用しないため、`threadParts` がある投稿(現状は日次の長文のみ)では付与した URL は使われない——日次は既定で URL を付けないので実害はないが、`xAllowUrlOnDaily` を有効化する際は知っておくべき制限。
+- 要点: URL 付与条件は「`notion_url` があり、かつ短文でない or `xAllowUrlOnShort` 有効」。なお `append_url()` は `text` にしか作用しないため、`threadParts` がある投稿(現状は短文の分割ツイートのみ)では付与した URL は使われない——短文は既定で URL を付けないので実害はないが、`xAllowUrlOnShort` を有効化する際は知っておくべき制限。
 
 #### `_publish_threads(post, post_id, notion_url) -> None`
 
@@ -206,12 +206,12 @@ flowchart TD
 - 役割: 1 行内のインライン装飾(`**太字**`・`*斜体*`・`` `コード` ``・`[ラベル](URL)` リンク)を Notion の rich_text オブジェクト列へ変換する。
 - 要点: Notion は rich_text 1 要素あたり本文 2000 文字が上限(`MAX_RICH_TEXT`)のため、超える要素は 2000 文字ずつに機械分割する(テストで `[2000, 2000, 500]` を固定)。
 
-#### `publish(title, markdown_body, *, category, cadence, date_iso) -> tuple[str, str]`
+#### `publish(title, markdown_body, *, category, post_format, date_iso) -> tuple[str, str]`
 
 - 役割: Trend News データベースにページを作り、`(page_id, 公開URL)` を返す。
 - 呼び出し元 → 先: `base._publish_notion()` → Notion API `POST /v1/pages`、`PATCH /v1/blocks/{page_id}/children`。
 - 外部アクセス: Notion API、Firestore(`settings/notion` の `databaseId`。未設定なら `RuntimeError`)。
-- 要点: プロパティは Name(タイトル、200 文字に切り詰め)/ Category / Cadence / Date。本文ブロックは 100 個ずつ分割投入し、追記の合間に 0.35 秒のスロットル(呼び出し間隔をわざと空けてレート制限を守ること)を入れる(§6-D)。API バージョンは `2022-06-28` 固定。
+- 要点: プロパティは Name(タイトル、200 文字に切り詰め)/ Category / Format / Date(移行で "Cadence" セレクトを "Format" にリネーム。§03-data-model / runbook)。本文ブロックは 100 個ずつ分割投入し、追記の合間に 0.35 秒のスロットル(呼び出し間隔をわざと空けてレート制限を守ること)を入れる(§6-D)。API バージョンは `2022-06-28` 固定。
 
 ## 6. 難所解説
 
@@ -271,7 +271,7 @@ def _publish_threads(post: Post, post_id: str, notion_url: str) -> None:
     state = post.channels["threads"]
     if not state.containerId:
         text = state.text
-        if notion_url and post.cadence.value != "daily":
+        if notion_url and post.format.value != "short":
             text = renderer.append_url(text, notion_url, renderer.fits_threads)
         image_url = ""
         if state.imageGcsPath and configs.app_settings().attachImages:
@@ -327,7 +327,7 @@ def x_weighted_length(text: str) -> int:
 
 ### 難所 D: Notion の 100 ブロック分割とスロットル — `notion.py` の `publish()`
 
-Notion API には「ページ作成時の `children` もブロック追記も 1 リクエスト 100 ブロックまで」という上限と、「平均 3 リクエスト/秒」のレート制限がある。月次の長文は変換すると 100 ブロックを超えることがあるため、次のように分割投入する。
+Notion API には「ページ作成時の `children` もブロック追記も 1 リクエスト 100 ブロックまで」という上限と、「平均 3 リクエスト/秒」のレート制限がある。記事(長文)は変換すると 100 ブロックを超えることがあるため、次のように分割投入する。
 
 ```python
         page = _post(client, "/pages", {
@@ -335,7 +335,7 @@ Notion API には「ページ作成時の `children` もブロック追記も 1 
             "properties": {
                 "Name": {"title": [{"text": {"content": title[:200]}}]},
                 "Category": {"select": {"name": category}},
-                "Cadence": {"select": {"name": cadence}},
+                "Format": {"select": {"name": post_format}},
                 "Date": {"date": {"start": date_iso}},
             },
             "children": blocks[:BLOCKS_PER_REQUEST],
@@ -389,7 +389,7 @@ Notion API には「ページ作成時の `children` もブロック追記も 1 
 
 | テスト | 固定している挙動 |
 | --- | --- |
-| `pipeline/tests/test_publish_orchestration.py` | Firestore と 3 クライアントを monkeypatch したオーケストレータ単体の検証。公開順(notion → x → th-create → th-publish)、`externalId` によるスキップ、永続化済み `containerId` の再開(create が呼ばれないこと)、部分失敗 → `partially_published` + error 保存、全滅 → `failed`、`only_channel` リトライ、日次 X に URL が付かない/週次ティーザーに Notion URL が付くこと |
+| `pipeline/tests/test_publish_orchestration.py` | Firestore と 3 クライアントを monkeypatch したオーケストレータ単体の検証。公開順(notion → x → th-create → th-publish)、`externalId` によるスキップ、永続化済み `containerId` の再開(create が呼ばれないこと)、部分失敗 → `partially_published` + error 保存、全滅 → `failed`、`only_channel` リトライ、短文 X に URL が付かない/記事ティーザーに Notion URL が付くこと |
 | `pipeline/tests/test_oauth1.py` | `oauth1_header()` を **X 公式ドキュメント「Creating a signature」の既知テストベクタ**(実在の例示認証情報 + 固定 nonce/timestamp → 期待署名 `hCtSmYh+iHYCEqBWrE7C7hYmtUk=`)と照合。ヘッダの形式、「JSON ボディは署名に影響せずクエリパラメータは影響する」という仕様も固定 |
 | `pipeline/tests/test_renderer.py` | 加重カウント(ASCII=1・CJK=2・URL=23)、280/500 の境界値(`a`×280 可・×281 不可、`日`×140 可・×141 不可)、スレッド分割の連番 ` (i/n)` と各パーツの上限遵守、`strip_urls()`、`append_url()` が本文を削ってでも上限内に収めること |
 | `pipeline/tests/test_notion_blocks.py` | Markdown→ブロック変換の対応表(見出し 3 種・リスト 2 種・引用・区切り線・言語付きコードフェンス)、インライン装飾(太字・リンク)、2000 文字分割(4500 文字 → `[2000, 2000, 500]`)、空行スキップ |
@@ -403,7 +403,7 @@ Notion API には「ページ作成時の `children` もブロック追記も 1 
 | 公開順序を変える | `base.py` の `publish_post()` 内 `order` リスト | **notion 先頭は事実上の制約**(X/Threads のティーザーが `notion_url` を参照)。変えるなら URL 供給の設計ごと見直し、`test_publish_orchestration.py` の順序テストを更新 |
 | 文字数制限を変える | `renderer.py` の `X_LIMIT` / `THREADS_LIMIT` | **`admin/src/lib/textLimits.ts` の同名定数も同時に変更**(管理画面の残文字数表示がズレる)。`test_renderer.py` の境界テストも更新 |
 | X の署名ロジックを触る | `x.py` の `oauth1_header()` / `_pct()` | **`test_oauth1.py` の既知ベクタを必ず通す**。1 文字の差で全リクエストが 401 になる。API ドメイン変更時は署名対象 URL も変わる点に注意 |
-| URL 付与ポリシーを変える | `base.py` の `_publish_x()` / `_publish_threads()`、`settings/app` の `xAllowUrlOnDaily` | X は URL 付き投稿の単価が高い(`x.py` の docstring 参照。単価一覧は [../04-parameters.md](../04-parameters.md))。`threadParts` がある投稿では `text` への URL 付与が使われない制限(§5 `_publish_x()`)も考慮 |
+| URL 付与ポリシーを変える | `base.py` の `_publish_x()` / `_publish_threads()`、`settings/app` の `xAllowUrlOnShort` | X は URL 付き投稿の単価が高い(`x.py` の docstring 参照。単価一覧は [../04-parameters.md](../04-parameters.md))。`threadParts` がある投稿では `text` への URL 付与が使われない制限(§5 `_publish_x()`)も考慮 |
 | Threads のポーリングを変える | `threads.py` の `POLL_INTERVAL_S`(2 秒)/ `POLL_MAX_ATTEMPTS`(15 回) | 最大待ち時間(現在約 30 秒)× 投稿数が呼び出し元のタイムアウト(pipeline-api のリクエスト、ジョブの実行時間上限)に収まるか |
 | Notion の投入速度を変える | `notion.py` の `THROTTLE_S`(0.35 秒)/ `BLOCKS_PER_REQUEST`(100) | 100 は API 仕様の上限なので増やせない。`THROTTLE_S` を下げると 429 → `api_retry` の再試行でかえって遅くなる |
 | 画像添付を止める/直す | `settings/app` の `attachImages`、`gcs.py` | 署名 URL(30 分有効)は pipeline-sa 自身への token-creator IAM が前提。外すと Threads の画像だけ壊れる(X はバイト列アップロードなので影響なし) |

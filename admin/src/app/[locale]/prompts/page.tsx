@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { Card, StatusBadge } from '@/components/ui';
-import { CADENCES } from '@/lib/constants';
+import { Card, EnabledBadge, PageHeader, Table, tdCls, thCls } from '@/components/ui';
+import { FORMATS } from '@/lib/constants';
 import { getCategories, getPromptTemplates } from '@/lib/data';
 
 export default async function PromptsPage({
@@ -10,47 +10,53 @@ export default async function PromptsPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const [t, templates, categories] = await Promise.all([
+  const [t, tc, templates, categories] = await Promise.all([
     getTranslations('prompts'),
+    getTranslations('common'),
     getPromptTemplates(),
     getCategories(),
   ]);
   const byId = new Map(templates.map((tpl) => [tpl.id, tpl]));
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold">{t('title')}</h1>
-      <Card>
-        <table className="w-full text-sm">
+    <div>
+      <PageHeader title={t('title')} />
+      <Card flush>
+        <Table>
           <thead>
-            <tr className="text-left text-xs text-slate-500">
-              <th className="py-1"></th>
-              {CADENCES.map((c) => <th key={c}>{c}</th>)}
+            <tr>
+              <th className={thCls}></th>
+              {FORMATS.map((f) => (
+                <th key={f} className={`${thCls} font-mono normal-case`}>{f}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {categories.map((cat) => (
-              <tr key={cat.slug} className="border-t border-slate-100">
-                <td className="py-2 text-xs font-medium">{cat.name}</td>
-                {CADENCES.map((cadence) => {
-                  const id = `${cat.slug}_${cadence}`;
+              <tr key={cat.slug} className="transition-colors hover:bg-paper/50">
+                <td className={`${tdCls} text-[13px] font-medium text-ink`}>{cat.name}</td>
+                {FORMATS.map((fmt) => {
+                  const id = `${cat.slug}_${fmt}`;
                   const tpl = byId.get(id);
                   return (
-                    <td key={cadence} className="py-2">
+                    <td key={fmt} className={tdCls}>
                       {tpl ? (
-                        <span className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-2">
                           <Link
                             href={`/${locale}/prompts/${id}`}
-                            className="text-sky-700 underline"
+                            className="font-mono text-xs font-medium text-accent underline-offset-2 hover:underline"
                           >
                             {id}
                           </Link>
-                          <StatusBadge status={tpl.enabled ? 'published' : 'skipped'} />
+                          <EnabledBadge
+                            enabled={tpl.enabled}
+                            labels={[tc('enabled'), tc('disabled')]}
+                          />
                         </span>
                       ) : (
                         <Link
                           href={`/${locale}/prompts/${id}`}
-                          className="text-xs text-slate-400 underline"
+                          className="text-xs text-slate-400 underline underline-offset-2 hover:text-accent"
                         >
                           {t('notSeeded')}
                         </Link>
@@ -61,7 +67,7 @@ export default async function PromptsPage({
               </tr>
             ))}
           </tbody>
-        </table>
+        </Table>
       </Card>
     </div>
   );

@@ -1,7 +1,7 @@
-"""Daily generation job (08:00 JST): generate one post per category and publish
-immediately unless the dailyRequireApproval safety valve is on."""
+"""Short generation job (08:00 JST): generate one post per category and publish
+immediately unless the shortRequireApproval safety valve is on."""
 
-from app.generators import daily
+from app.generators import short
 from app.models import PostStatus, Run
 from app.publishers.base import publish_post
 from app.repo import configs, items, posts, runs
@@ -11,15 +11,15 @@ log = get_logger(__name__)
 
 
 def main() -> None:
-    run_id = runs.start("generate_daily")
-    run = Run(jobType="generate_daily")
+    run_id = runs.start("generate_short")
+    run = Run(jobType="generate_short")
 
     for category in configs.enabled_categories():
         try:
-            post = daily.generate_for_category(category)
+            post = short.generate_for_category(category)
         except Exception as exc:
             run.errors.append(f"generate {category.slug}: {exc}")
-            log.error("daily generation failed", extra={"fields": {"category": category.slug, "error": str(exc)}})
+            log.error("short generation failed", extra={"fields": {"category": category.slug, "error": str(exc)}})
             continue
         if post is None:
             continue
@@ -29,7 +29,7 @@ def main() -> None:
         run.costUsd = round(run.costUsd + post.tokenUsage.costUsd, 6)
 
         if post.status != PostStatus.approved:
-            log.info("daily draft held for approval", extra={"fields": {"post": post_id}})
+            log.info("short draft held for approval", extra={"fields": {"post": post_id}})
             continue
         try:
             result = publish_post(post_id)
@@ -44,7 +44,7 @@ def main() -> None:
 
     run.ok = not run.errors
     runs.finish(run_id, run)
-    log.info("generate_daily finished", extra={"fields": run.stats.model_dump()})
+    log.info("generate_short finished", extra={"fields": run.stats.model_dump()})
 
 
 if __name__ == "__main__":

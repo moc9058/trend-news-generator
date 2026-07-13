@@ -73,11 +73,11 @@ def main() -> None:
         created += _create_if_absent("sources", source_id, data)
 
     for cat in CATEGORIES:
-        for cadence, defaults in DEFAULTS.items():
-            doc_id = f"{cat['slug']}_{cadence}"
+        for post_format, defaults in DEFAULTS.items():
+            doc_id = f"{cat['slug']}_{post_format}"
             created += _create_if_absent("promptTemplates", doc_id, {
                 "categoryId": cat["slug"],
-                "cadence": cadence,
+                "format": post_format,
                 "systemPrompt": defaults["systemPrompt"],
                 "userPromptTemplate": defaults["userPromptTemplate"],
                 "outlineSystemPrompt": defaults.get("outlineSystemPrompt", ""),
@@ -88,15 +88,15 @@ def main() -> None:
             })
             for channel, language in CHANNEL_LANGUAGES.items():
                 created += _create_if_absent(
-                    "channelConfigs", f"{cat['slug']}_{cadence}_{channel}",
-                    {"categoryId": cat["slug"], "cadence": cadence, "channel": channel,
+                    "channelConfigs", f"{cat['slug']}_{post_format}_{channel}",
+                    {"categoryId": cat["slug"], "format": post_format, "channel": channel,
                      "enabled": True, "language": language},
                 )
 
     created += _create_if_absent("settings", "app", {
         "timezone": "Asia/Tokyo",
-        "dailyRequireApproval": False,
-        "xAllowUrlOnDaily": False,
+        "shortRequireApproval": False,
+        "xAllowUrlOnShort": False,
         "attachImages": True,
     })
     created += _create_if_absent("settings", "notion", {"databaseId": ""})

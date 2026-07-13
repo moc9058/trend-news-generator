@@ -148,7 +148,7 @@ def publish(
     markdown_body: str,
     *,
     category: str,
-    cadence: str,
+    post_format: str,
     date_iso: str,
 ) -> tuple[str, str]:
     """Create a page in the Trend News database; returns (page_id, public_url)."""
@@ -165,7 +165,7 @@ def publish(
             "properties": {
                 "Name": {"title": [{"text": {"content": title[:200]}}]},
                 "Category": {"select": {"name": category}},
-                "Cadence": {"select": {"name": cadence}},
+                "Format": {"select": {"name": post_format}},
                 "Date": {"date": {"start": date_iso}},
             },
             "children": blocks[:BLOCKS_PER_REQUEST],

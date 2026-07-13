@@ -1,5 +1,5 @@
-"""Daily short-form generation: recent items → one Post per category with
-per-channel texts in the languages configured in channelConfigs."""
+"""Short-form generation (was 'daily'): recent items → one Post per category
+with per-channel texts in the languages configured in channelConfigs."""
 
 from datetime import datetime, timezone
 
@@ -7,11 +7,11 @@ from app.config import get_settings
 from app.generators import prompts
 from app.generators.openai_client import generate_json
 from app.models import (
-    Cadence,
     Category,
     Channel,
     ChannelState,
     ChannelStatus,
+    Format,
     Post,
     PostStatus,
     TokenUsage,
@@ -40,9 +40,9 @@ def _shrink_retry(model: str, system: str, user: str, result: dict, usage: Token
 
 def generate_for_category(category: Category) -> Post | None:
     settings = get_settings()
-    cfg_x = configs.channel_config(category.slug, Cadence.daily, Channel.x)
-    cfg_th = configs.channel_config(category.slug, Cadence.daily, Channel.threads)
-    cfg_no = configs.channel_config(category.slug, Cadence.daily, Channel.notion)
+    cfg_x = configs.channel_config(category.slug, Format.short, Channel.x)
+    cfg_th = configs.channel_config(category.slug, Format.short, Channel.threads)
+    cfg_no = configs.channel_config(category.slug, Format.short, Channel.notion)
     if not any(c.enabled for c in (cfg_x, cfg_th, cfg_no)):
         return None
 
@@ -51,9 +51,9 @@ def generate_for_category(category: Category) -> Post | None:
         log.info("no recent items", extra={"fields": {"category": category.slug}})
         return None
 
-    template = configs.prompt_template(category.slug, Cadence.daily)
+    template = configs.prompt_template(category.slug, Format.short)
     if template is None:
-        log.warning("no daily prompt template", extra={"fields": {"category": category.slug}})
+        log.warning("no short prompt template", extra={"fields": {"category": category.slug}})
         return None
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -81,7 +81,7 @@ def generate_for_category(category: Category) -> Post | None:
         result = _shrink_retry(model, template.systemPrompt, user_prompt, result, usage)
         x_text = renderer.strip_urls(str(result.get("x_text", "")))
         threads_text = str(result.get("threads_text", ""))
-    # last resort: hard-trim so the daily run never dies on length
+    # last resort: hard-trim so the short run never dies on length
     if not renderer.fits_threads(threads_text):
         threads_text = threads_text[: renderer.THREADS_LIMIT - 1] + "…"
 
@@ -96,9 +96,9 @@ def generate_for_category(category: Category) -> Post | None:
                 break
 
     post = Post(
-        cadence=Cadence.daily,
+        format=Format.short,
         categoryId=category.slug,
-        status=PostStatus.draft if app.dailyRequireApproval else PostStatus.approved,
+        status=PostStatus.draft if app.shortRequireApproval else PostStatus.approved,
         title=str(result.get("notion_title", f"{category.name} — {today}")),
         summary=str(result.get("notion_summary", "")),
         body=str(result.get("notion_summary", "")),

@@ -3,9 +3,9 @@
 import { usePathname, useRouter } from 'next/navigation';
 
 const LOCALES = [
-  { code: 'ko', label: '한국어' },
-  { code: 'ja', label: '日本語' },
-  { code: 'en', label: 'English' },
+  { code: 'ko', label: '한국어', short: 'KO' },
+  { code: 'ja', label: '日本語', short: 'JA' },
+  { code: 'en', label: 'English', short: 'EN' },
 ];
 
 export function LocaleSwitcher({ current }: { current: string }) {
@@ -19,18 +19,20 @@ export function LocaleSwitcher({ current }: { current: string }) {
   }
 
   return (
-    <div className="flex gap-1">
+    <div className="flex flex-col gap-1 rounded-lg bg-ink-raise/60 p-1 lg:flex-row">
       {LOCALES.map((l) => (
         <button
           key={l.code}
           onClick={() => switchTo(l.code)}
-          className={`rounded px-2 py-1 text-xs ${
+          title={l.label}
+          className={`flex-1 rounded-md px-2 py-1 font-mono text-[11px] font-semibold tracking-wide transition-colors ${
             l.code === current
-              ? 'bg-slate-900 text-white'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              ? 'bg-white text-ink shadow-card'
+              : 'text-ink-muted hover:text-white'
           }`}
         >
-          {l.label}
+          <span className="lg:hidden">{l.short}</span>
+          <span className="hidden lg:inline">{l.label}</span>
         </button>
       ))}
     </div>

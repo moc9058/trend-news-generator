@@ -4,13 +4,21 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
-class Cadence(str, Enum):
-    daily = "daily"
-    weekly = "weekly"
-    monthly = "monthly"
+class Format(str, Enum):
+    """Deliverable kind. Replaces the old delivery-cadence enum (daily/weekly/
+    monthly) — see docs/tech-report/05-detailed-design/10-research-agent.md §1."""
+
+    short = "short"      # was daily  — recent-items digest, auto-published
+    article = "article"  # was weekly — trend analysis, draft → approval
+    report = "report"    # was monthly — deep-dive research report (Research Agent)
+
+
+# Legacy delivery-cadence → format, used by the Post compat shim below and by
+# scripts/migrate_cadence_to_format.py. Kept here as the single source of truth.
+LEGACY_CADENCE_TO_FORMAT = {"daily": "short", "weekly": "article", "monthly": "report"}
 
 
 class Channel(str, Enum):
@@ -62,16 +70,16 @@ class Source(BaseModel):
 
 
 class PromptTemplate(BaseModel):
-    id: str = ""  # {categoryId}_{cadence}
+    id: str = ""  # {categoryId}_{format}
     categoryId: str
-    cadence: Cadence
+    format: Format
     systemPrompt: str
     userPromptTemplate: str  # placeholders: {items} {category} {date} {language} {keywords}
-    # weekly/monthly two-stage generation: stage-1 selection/outline prompts
+    # article/report two-stage generation: stage-1 selection/outline prompts
     outlineSystemPrompt: str = ""
     outlineUserPromptTemplate: str = ""
     modelOverride: str = ""
-    # focus keywords for this category x cadence: steer collection (union per
+    # focus keywords for this category x format: steer collection (union per
     # category) and give extra weight during generation. Empty = no steering.
     focusKeywords: list[str] = []
     enabled: bool = True
@@ -122,7 +130,7 @@ class TokenUsage(BaseModel):
 
 class Post(BaseModel):
     id: str = ""
-    cadence: Cadence
+    format: Format
     categoryId: str
     status: PostStatus = PostStatus.draft
     title: str = ""
@@ -135,11 +143,25 @@ class Post(BaseModel):
     approvedBy: str = ""
     publishedAt: Optional[datetime] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_cadence(cls, data):
+        """Bridge pre-migration docs that still carry `cadence` instead of
+        `format`. posts.old_drafts()/get() build Post(**doc) over EVERY draft, so
+        a single un-migrated doc would otherwise crash the cleanup_drafts job and
+        the publish API. The migration removes the legacy field; this shim only
+        covers the deploy→migrate window and makes rollbacks safe."""
+        if isinstance(data, dict) and "format" not in data and "cadence" in data:
+            legacy = data["cadence"]
+            legacy = getattr(legacy, "value", legacy)
+            data = {**data, "format": LEGACY_CADENCE_TO_FORMAT.get(legacy, legacy)}
+        return data
+
 
 class ChannelConfig(BaseModel):
-    id: str = ""  # {categoryId}_{cadence}_{channel}
+    id: str = ""  # {categoryId}_{format}_{channel}
     categoryId: str
-    cadence: Cadence
+    format: Format
     channel: Channel
     enabled: bool = True
     language: str = "en"
@@ -167,6 +189,6 @@ class Run(BaseModel):
 
 class AppSettings(BaseModel):
     timezone: str = "Asia/Tokyo"
-    dailyRequireApproval: bool = False
-    xAllowUrlOnDaily: bool = False
+    shortRequireApproval: bool = False
+    xAllowUrlOnShort: bool = False
     attachImages: bool = True

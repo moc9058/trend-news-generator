@@ -40,6 +40,25 @@
 - X 投稿コストの目安: 日次 3件/日 × $0.015 + 週次/月次 URL入り ≈ 月 $5 未満
 - GCP 側は Billing コンソールで budget alert（$30）を設定推奨
 
+## 区分リネーム移行（cadence → format, P0）
+
+daily/weekly/monthly を short/article/report に一括変換する一度きりの移行。スクリプトは `pipeline/scripts/migrate_cadence_to_format.py`（既定 dry-run、`--apply`/`--rollback`/`--notion`）。
+
+> **pause は必須**: 旧 Cloud Run ジョブは旧イメージ digest のまま動き続けるため、pause を省略すると「旧コード×移行済みデータ」で `cleanup_drafts` が ValidationError で落ち、旧 `generate-daily` が Notion 400（"Cadence" プロパティ消失）を起こす。
+
+1. **バックアップ**: `gcloud firestore export gs://trend-news-generator-media/backups/pre-format-YYYYMMDD`
+2. **複合インデックスを先に作成**（ビルドが非同期のため先行）: `posts(format, createdAt DESC)` + `researchRuns(status, createdAt ASC)`（`infra/firestore.indexes.json` / `00-bootstrap.sh` に反映済み）
+3. **スケジューラ pause**: `sched-collect / sched-generate-daily / -weekly / -monthly / sched-cleanup-drafts`（`sched-threads-refresh` は cadence 非依存で継続可）
+4. **新コードデプロイ**（`10-deploy-pipeline.sh`）: pipeline-api 更新 + `job-generate-short/article` 新規作成（旧 `job-generate-{daily,weekly,monthly}` は残置＝ロールバック用）
+5. `migrate_cadence_to_format.py`（引数なし=dry-run）→ 差分レビュー → `--apply`
+6. **Notion DB**: `--notion` で `PATCH /v1/databases/{id}` により "Cadence"→"Format" リネーム + `Language` セレクト追加（手動 UI でも可）。セレクト選択肢は初回書込みで自動作成。旧ページは旧値のまま容認
+7. **admin 再ビルド・デプロイ**: `admin/src/lib/shared-constants.json` の再生成をコード変更と同一コミットに含める（admin の Docker ビルドは `shared/` を参照できず committed copy にフォールバックするため、忘れると旧 enum が本番に出る）
+8. `20-schedulers.sh` 再実行（`sched-generate-short/article` 作成）→ **名前が変わらない paused スケジューラを明示 resume**: `sched-collect / sched-cleanup-drafts`
+9. **孤児削除**: `gcloud run jobs delete job-generate-{daily,weekly,monthly}` / `gcloud scheduler jobs delete sched-generate-{daily,weekly,monthly}`
+10. スモーク（短文自動生成1件・admin グリッド表示・`promptTemplates`/`channelConfigs` 件数 9/27 一致）後、旧 `posts(cadence, createdAt)` 複合インデックスを削除
+
+ロールバック: `migrate_cadence_to_format.py --rollback --apply`（逆写像）。`Post` の旧値受理シムにより移行/デプロイの順序事故は非致命。`gcloud firestore import` は export 後に作成された新 ID 文書を消さないため最終手段。
+
 ## ローカルでの単発実行
 
 ```bash
@@ -47,11 +66,11 @@ cd pipeline
 cp .env.example .env   # 値を記入
 gcloud auth application-default login
 python -m app.jobs.collect
-python -m app.jobs.generate_daily
+python -m app.jobs.generate_short
 ```
 
 ## 安全弁
 
-- **Settings → dailyRequireApproval**: 日次も承認必須にする（品質問題発生時）
+- **Settings → shortRequireApproval**: 短文も承認必須にする（品質問題発生時）
 - **Settings → attachImages**: 収集画像の添付を全停止（著作権リスク対応）
 - チャネル単位の停止: Channels ページのチェックボックス

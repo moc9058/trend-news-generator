@@ -39,11 +39,14 @@ create_index posts \
   --field-config=field-path=status,order=ascending \
   --field-config=field-path=createdAt,order=descending
 create_index posts \
-  --field-config=field-path=cadence,order=ascending \
+  --field-config=field-path=format,order=ascending \
   --field-config=field-path=createdAt,order=descending
 create_index sources \
   --field-config=field-path=categoryId,order=ascending \
   --field-config=field-path=enabled,order=ascending
+create_index researchRuns \
+  --field-config=field-path=status,order=ascending \
+  --field-config=field-path=createdAt,order=ascending
 
 echo "--- GCS bucket (private)"
 gcloud storage buckets create "gs://${BUCKET}" --location="$REGION" \

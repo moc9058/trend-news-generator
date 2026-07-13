@@ -8,7 +8,8 @@ import type {
 function mapPost(id: string, data: FirebaseFirestore.DocumentData): Post {
   return {
     id,
-    cadence: data.cadence ?? '',
+    // `?? data.cadence` bridges any not-yet-migrated post doc (see migration §9.2).
+    format: data.format ?? data.cadence ?? '',
     categoryId: data.categoryId ?? '',
     status: data.status ?? '',
     title: data.title ?? '',
@@ -112,8 +113,8 @@ export async function getAppSettings(): Promise<AppSettingsDoc> {
   const data = snap.data() ?? {};
   return {
     timezone: data.timezone ?? 'Asia/Tokyo',
-    dailyRequireApproval: data.dailyRequireApproval ?? false,
-    xAllowUrlOnDaily: data.xAllowUrlOnDaily ?? false,
+    shortRequireApproval: data.shortRequireApproval ?? false,
+    xAllowUrlOnShort: data.xAllowUrlOnShort ?? false,
     attachImages: data.attachImages ?? true,
   };
 }

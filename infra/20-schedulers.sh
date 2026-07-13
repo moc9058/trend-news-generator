@@ -28,10 +28,12 @@ create_sched() {
 }
 
 create_sched sched-collect            "0 6 * * *"  job-collect
-create_sched sched-generate-daily     "0 8 * * *"  job-generate-daily
-create_sched sched-generate-weekly    "0 7 * * 1"  job-generate-weekly
-create_sched sched-generate-monthly   "0 7 1 * *"  job-generate-monthly
+create_sched sched-generate-short     "0 8 * * *"  job-generate-short
+create_sched sched-generate-article   "0 7 * * 1"  job-generate-article
 create_sched sched-cleanup-drafts     "0 4 * * *"  job-cleanup-drafts
 create_sched sched-threads-refresh    "0 3 * * 1"  job-refresh-threads-token
 
-echo "schedulers created (Asia/Tokyo): 06:00 collect / 08:00 daily / Mon 07:00 weekly / 1st 07:00 monthly / 04:00 cleanup drafts / Mon 03:00 token refresh"
+# The 1st-of-month report trigger (sched-generate-report) calls pipeline-api
+# directly (OIDC), not a Cloud Run Job, so it is added by a later phase (docs 10 §4.6 / §9.1 P7).
+
+echo "schedulers created (Asia/Tokyo): 06:00 collect / 08:00 short / Mon 07:00 article / 04:00 cleanup drafts / Mon 03:00 token refresh"

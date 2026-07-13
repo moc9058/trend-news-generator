@@ -68,7 +68,7 @@ export async function savePromptTemplate(formData: FormData): Promise<void> {
   await db().collection('promptTemplates').doc(id).set(
     {
       categoryId: String(formData.get('categoryId') ?? ''),
-      cadence: String(formData.get('cadence') ?? ''),
+      format: String(formData.get('format') ?? ''),
       systemPrompt: String(formData.get('systemPrompt') ?? ''),
       userPromptTemplate: String(formData.get('userPromptTemplate') ?? ''),
       outlineSystemPrompt: String(formData.get('outlineSystemPrompt') ?? ''),
@@ -83,7 +83,7 @@ export async function savePromptTemplate(formData: FormData): Promise<void> {
   revalidatePath('/', 'layout');
 }
 
-/** Bulk save for the dashboard's category x cadence automation grid. */
+/** Bulk save for the dashboard's category x format automation grid. */
 export async function saveAutomation(formData: FormData): Promise<void> {
   const ids = formData.getAll('ids').map(String);
   const batch = db().batch();
@@ -99,11 +99,11 @@ export async function saveAutomation(formData: FormData): Promise<void> {
 // ---------- channel configs ----------
 
 export async function saveChannelConfig(
-  id: string, categoryId: string, cadence: string, channel: string,
+  id: string, categoryId: string, format: string, channel: string,
   enabled: boolean, language: string,
 ): Promise<void> {
   await db().collection('channelConfigs').doc(id).set(
-    { categoryId, cadence, channel, enabled, language },
+    { categoryId, format, channel, enabled, language },
     { merge: true },
   );
   revalidatePath('/', 'layout');
@@ -115,8 +115,8 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
   await db().collection('settings').doc('app').set(
     {
       timezone: String(formData.get('timezone') ?? 'Asia/Tokyo'),
-      dailyRequireApproval: formData.get('dailyRequireApproval') === 'on',
-      xAllowUrlOnDaily: formData.get('xAllowUrlOnDaily') === 'on',
+      shortRequireApproval: formData.get('shortRequireApproval') === 'on',
+      xAllowUrlOnShort: formData.get('xAllowUrlOnShort') === 'on',
       attachImages: formData.get('attachImages') === 'on',
     },
     { merge: true },

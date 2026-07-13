@@ -6,10 +6,28 @@ import { useRouter } from 'next/navigation';
 import type { Post } from '@/lib/types';
 import { approveAndPublish, saveDraft } from '@/lib/actions';
 import { THREADS_LIMIT, X_LIMIT, xWeightedLength } from '@/lib/textLimits';
-import { btnCls, btnSecondaryCls, inputCls } from './ui';
+import { btnCls, btnSecondaryCls, inputCls, labelCls, StatusBadge } from './ui';
 
 const areaCls =
-  'w-full rounded border border-slate-300 p-2 font-mono text-xs focus:border-slate-500 focus:outline-none';
+  'mt-1 w-full rounded-lg border border-line bg-white p-3 font-mono text-xs leading-relaxed text-ink shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+
+function LimitMeter({ count, limit }: { count: number; limit: number }) {
+  const over = count > limit;
+  const pct = Math.min(100, (count / limit) * 100);
+  return (
+    <span className="ml-auto inline-flex items-center gap-2">
+      <span className="h-1 w-16 overflow-hidden rounded-full bg-slate-200">
+        <span
+          className={`block h-full rounded-full ${over ? 'bg-red-500' : 'bg-accent'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className={`font-mono text-[11px] ${over ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+        {count}/{limit}
+      </span>
+    </span>
+  );
+}
 
 export function DraftEditor({ post }: { post: Post }) {
   const t = useTranslations('drafts');
@@ -44,114 +62,138 @@ export function DraftEditor({ post }: { post: Post }) {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-      <div className="space-y-3">
-        <label className="block text-sm">
+    <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
+      {/* editor column */}
+      <div className="space-y-4 rounded-xl border border-line bg-white p-5 shadow-card">
+        <label className={labelCls}>
           {tc('title')}
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
         </label>
-        <label className="block text-sm">
+        <label className={labelCls}>
           {t('summary')}
           <textarea value={summary} onChange={(e) => setSummary(e.target.value)}
             rows={3} className={areaCls} />
         </label>
-        <label className="block text-sm">
+        <label className={labelCls}>
           {t('body')}
           <textarea value={body} onChange={(e) => setBody(e.target.value)}
             rows={24} className={areaCls} />
         </label>
-        <div className="space-y-2">
-          <div className="text-sm font-medium">{t('channelTexts')}</div>
-          <label className="block text-xs">
-            {t('xText')}
-            <span className={`ml-2 ${xLen > X_LIMIT ? 'text-red-600' : 'text-slate-400'}`}>
-              {t('xWeighted', { count: xLen })}
+
+        <div className="space-y-3 border-t border-line pt-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {t('channelTexts')}
+          </div>
+          <label className={labelCls}>
+            <span className="flex items-center">
+              {t('xText')}
+              <LimitMeter count={xLen} limit={X_LIMIT} />
             </span>
             <textarea value={xText} onChange={(e) => setXText(e.target.value)}
               rows={4} className={areaCls} />
           </label>
-          <label className="block text-xs">
-            {t('threadsText')}
-            <span className={`ml-2 ${threadsText.length > THREADS_LIMIT ? 'text-red-600' : 'text-slate-400'}`}>
-              {t('charCount', { count: threadsText.length })}/{THREADS_LIMIT}
+          <label className={labelCls}>
+            <span className="flex items-center">
+              {t('threadsText')}
+              <LimitMeter count={threadsText.length} limit={THREADS_LIMIT} />
             </span>
             <textarea value={threadsText} onChange={(e) => setThreadsText(e.target.value)}
               rows={4} className={areaCls} />
           </label>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            className={btnSecondaryCls}
-            disabled={pending}
-            onClick={() => startTransition(async () => {
-              await saveDraft(persist());
-              setResult({ ok: true, detail: 'saved' });
-            })}
-          >
-            {tc('save')}
-          </button>
-        </div>
+
+        <button
+          className={btnSecondaryCls}
+          disabled={pending}
+          onClick={() => startTransition(async () => {
+            await saveDraft(persist());
+            setResult({ ok: true, detail: 'saved' });
+          })}
+        >
+          {tc('save')}
+        </button>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex gap-1">
-          {(['notion', 'x', 'threads'] as const).map((name) => (
-            <button key={name}
-              onClick={() => setTab(name)}
-              className={`rounded-t px-3 py-1.5 text-sm ${
-                tab === name ? 'bg-white font-medium shadow-sm' : 'bg-slate-100 text-slate-500'
-              }`}
-            >
-              {name} {t('preview')}
-            </button>
-          ))}
-        </div>
-        <div className="min-h-64 rounded-lg border border-slate-200 bg-white p-4">
-          {tab === 'notion' && (
-            <article className="prose prose-sm max-w-none whitespace-pre-wrap text-sm">
-              <h2 className="mb-2 text-base font-bold">{title}</h2>
-              {body}
-            </article>
-          )}
-          {tab === 'x' && (
-            <div className="max-w-md rounded-xl border border-slate-200 p-3 text-sm whitespace-pre-wrap">
-              {xText}
-              {post.cadence !== 'daily' && (
-                <div className="mt-1 text-xs text-sky-600">+ Notion URL</div>
-              )}
-            </div>
-          )}
-          {tab === 'threads' && (
-            <div className="max-w-md rounded-xl border border-slate-200 p-3 text-sm whitespace-pre-wrap">
-              {threadsText}
-              {post.cadence !== 'daily' && (
-                <div className="mt-1 text-xs text-sky-600">+ Notion URL</div>
-              )}
-            </div>
-          )}
+      {/* preview + publish column */}
+      <div className="space-y-4">
+        <div className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+          <div className="flex gap-1 border-b border-line bg-paper/60 p-1.5">
+            {(['notion', 'x', 'threads'] as const).map((name) => (
+              <button
+                key={name}
+                onClick={() => setTab(name)}
+                className={`flex-1 rounded-lg px-3 py-1.5 font-mono text-xs font-medium transition-colors ${
+                  tab === name
+                    ? 'bg-white text-ink shadow-card'
+                    : 'text-slate-500 hover:text-ink'
+                }`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+          <div className="min-h-64 p-5">
+            {tab === 'notion' && (
+              <article className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">{title}</h2>
+                {body}
+              </article>
+            )}
+            {tab !== 'notion' && (
+              <div className="mx-auto max-w-md rounded-xl border border-line bg-paper/40 p-4">
+                <div className="mb-2.5 flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-full bg-ink" />
+                  <div className="leading-tight">
+                    <div className="text-[13px] font-semibold text-ink">Trend News</div>
+                    <div className="font-mono text-[11px] text-slate-400">
+                      @trendnews · {tab}
+                    </div>
+                  </div>
+                </div>
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                  {tab === 'x' ? xText : threadsText}
+                </div>
+                {post.format !== 'short' && (
+                  <div className="mt-2 font-mono text-xs text-accent">+ Notion URL</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <div className="mb-2 text-sm font-medium">{t('publishTo')}</div>
-          <div className="mb-3 flex gap-4">
-            {Object.entries(post.channels).map(([name, ch]) => (
-              <label key={name} className="flex items-center gap-1 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(name)}
-                  disabled={ch.status === 'published'}
-                  onChange={(e) =>
-                    setSelected((prev) =>
-                      e.target.checked ? [...prev, name] : prev.filter((n) => n !== name),
-                    )
-                  }
-                />
-                {name}
-                {ch.status !== 'pending' && (
-                  <span className="text-xs text-slate-400">({ch.status})</span>
-                )}
-              </label>
-            ))}
+        <div className="rounded-xl border border-line bg-white p-5 shadow-card">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            {t('publishTo')}
+          </div>
+          <div className="mb-4 flex flex-wrap gap-2">
+            {Object.entries(post.channels).map(([name, ch]) => {
+              const checked = selected.includes(name);
+              const locked = ch.status === 'published';
+              return (
+                <label
+                  key={name}
+                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                    checked
+                      ? 'border-accent-line bg-accent-soft text-ink'
+                      : 'border-line bg-white text-slate-500'
+                  } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={locked}
+                    onChange={(e) =>
+                      setSelected((prev) =>
+                        e.target.checked ? [...prev, name] : prev.filter((n) => n !== name),
+                      )
+                    }
+                    className="h-4 w-4 rounded border-line"
+                  />
+                  <span className="font-mono text-xs font-medium">{name}</span>
+                  {ch.status !== 'pending' && <StatusBadge status={ch.status} />}
+                </label>
+              );
+            })}
           </div>
           <button
             className={btnCls}
@@ -169,7 +211,11 @@ export function DraftEditor({ post }: { post: Post }) {
             {pending ? '…' : t('approvePublish')}
           </button>
           {result && (
-            <div className={`mt-2 text-xs ${result.ok ? 'text-emerald-700' : 'text-red-700'}`}>
+            <div
+              className={`mt-3 rounded-lg px-3 py-2 font-mono text-xs ${
+                result.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+              }`}
+            >
               {result.detail.slice(0, 400)}
             </div>
           )}

@@ -7,7 +7,11 @@
     "sources": "Sources",
     "prompts": "Prompts",
     "channels": "Channels",
-    "settings": "Settings"
+    "settings": "Settings",
+    "groupMonitor": "Monitor",
+    "groupContent": "Content",
+    "groupPipeline": "Pipeline setup",
+    "groupSystem": "System"
   },
   "common": {
     "save": "Save",
@@ -18,7 +22,7 @@
     "disabled": "Disabled",
     "language": "Language",
     "category": "Category",
-    "cadence": "Cadence",
+    "format": "Format",
     "channel": "Channel",
     "status": "Status",
     "title": "Title",
@@ -42,13 +46,20 @@
     "noDrafts": "No drafts waiting",
     "viewAll": "View all",
     "automation": "Automation",
-    "automationHint": "Check/uncheck automatic generation per category x cadence, then press Save. Unchecked combinations are skipped during daily/weekly/monthly runs.",
+    "automationHint": "Check/uncheck automatic generation per category x format, then press Save. Unchecked combinations are skipped during short/article/report runs.",
     "generate": "Content generation (manual)",
-    "generateHint": "Press \"① Collect\" to gather the latest items, then \"② Generate\". Daily auto-publishes to each channel; weekly/monthly create a draft (approve on the Drafts page). Watch progress in \"Recent job runs\" below.",
+    "generateHint": "Press \"① Collect\" to gather the latest items, then \"② Generate\". Short auto-publishes to each channel; article/report create a draft (approve on the Drafts page). Watch progress in \"Recent job runs\" below.",
     "collect": "① Collect",
-    "daily": "② Generate daily",
-    "weekly": "② Generate weekly",
-    "monthly": "② Generate monthly"
+    "short": "② Generate short",
+    "article": "② Generate article",
+    "flowTitle": "Pipeline status",
+    "stageCollect": "Collect",
+    "stageGenerate": "Generate",
+    "stagePublish": "Publish",
+    "neverRan": "No runs yet",
+    "runOk": "ok",
+    "runFailed": "failed",
+    "noPosts": "No posts yet"
   },
   "drafts": {
     "title": "Drafts",
@@ -70,7 +81,8 @@
   "posts": {
     "title": "Post history",
     "channelStatus": "Channel status",
-    "cost": "Cost"
+    "cost": "Cost",
+    "empty": "No posts yet"
   },
   "categories": {
     "title": "Categories",
@@ -95,25 +107,25 @@
   "prompts": {
     "title": "Prompt templates",
     "focusKeywords": "Focus keywords (comma-separated)",
-    "focusKeywordsHint": "Keywords to emphasise for this category x cadence. Prioritised in both collection (web search) and article generation — other major news is still picked up. Blank = no change. Lets you steer focus without touching the system prompt.",
+    "focusKeywordsHint": "Keywords to emphasise for this category x format. Prioritised in both collection (web search) and article generation — other major news is still picked up. Blank = no change. Lets you steer focus without touching the system prompt.",
     "systemPrompt": "System prompt",
     "userPrompt": "User prompt template",
-    "outlineSystemPrompt": "Outline system prompt (weekly/monthly stage 1)",
-    "outlineUserPrompt": "Outline user prompt template (weekly/monthly stage 1)",
+    "outlineSystemPrompt": "Outline system prompt (article/report stage 1)",
+    "outlineUserPrompt": "Outline user prompt template (article/report stage 1)",
     "modelOverride": "Model override (blank = default)",
-    "placeholders": "Placeholders: '{items}' '{category}' '{date}' '{language}' '{keywords}' (+daily: '{x_language}' '{threads_language}' '{notion_language}'; +article: '{theme}' '{outline}'). Focus keywords are appended automatically, so '{keywords}' is optional.",
+    "placeholders": "Placeholders: '{items}' '{category}' '{date}' '{language}' '{keywords}' (+short: '{x_language}' '{threads_language}' '{notion_language}'; +article: '{theme}' '{outline}'). Focus keywords are appended automatically, so '{keywords}' is optional.",
     "notSeeded": "not seeded"
   },
   "channels": {
     "title": "Channel matrix",
-    "hint": "Language and on/off per category x cadence x channel. Daily posts publish automatically; weekly/monthly go through draft approval."
+    "hint": "Language and on/off per category x format x channel. Short posts publish automatically; article/report go through draft approval."
   },
   "settings": {
     "title": "Settings",
     "app": "Application",
     "timezone": "Timezone",
-    "dailyRequireApproval": "Require approval for daily posts too (safety valve)",
-    "xAllowUrlOnDaily": "Allow URLs in daily X posts ($0.20/post instead of $0.015)",
+    "shortRequireApproval": "Require approval for short posts too (safety valve)",
+    "xAllowUrlOnShort": "Allow URLs in short X posts ($0.20/post instead of $0.015)",
     "attachImages": "Attach collected images to posts",
     "notionDatabaseId": "Notion database ID",
     "jobs": "Manual job execution"

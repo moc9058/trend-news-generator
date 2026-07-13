@@ -62,15 +62,3 @@ def update_channel(post_id: str, channel: str, state: ChannelState) -> None:
 
 def update_fields(post_id: str, fields: dict) -> None:
     db().collection(COLLECTION).document(post_id).update(fields)
-
-
-def recent_by_cadence(cadence: str, limit: int = 20) -> list[Post]:
-    docs = (
-        db()
-        .collection(COLLECTION)
-        .where(filter=firestore.FieldFilter("cadence", "==", cadence))
-        .order_by("createdAt", direction=firestore.Query.DESCENDING)
-        .limit(limit)
-        .get()
-    )
-    return [Post(id=d.id, **d.to_dict()) for d in docs]

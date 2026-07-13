@@ -1,10 +1,10 @@
-"""Weekly/monthly two-stage long-form generation.
+"""Article two-stage long-form generation (was the weekly/monthly path).
 
 Stage 1 (gpt-5.4-mini): theme + outline + 15-25 item selection from the period's
-items (monthly additionally sees the month's weekly article summaries —
-hierarchical accumulation). Stage 2 (gpt-5.5): full article from the selected
-items' full text, plus per-channel teasers. Saved as status=draft — publishing
-happens only after approval in the admin UI.
+items. Stage 2 (gpt-5.5): full article from the selected items' full text, plus
+per-channel teasers. Saved as status=draft — publishing happens only after
+approval in the admin UI. (The old monthly deep-dive path is replaced by the
+Research Agent report system; see docs/tech-report/05-detailed-design/10.)
 """
 
 from datetime import datetime, timezone
@@ -13,68 +13,50 @@ from app.config import get_settings
 from app.generators import prompts
 from app.generators.openai_client import generate_json
 from app.models import (
-    Cadence,
     Category,
     Channel,
     ChannelState,
     ChannelStatus,
+    Format,
     Post,
     PostStatus,
     TokenUsage,
 )
 from app.publishers import renderer
-from app.repo import configs, items, posts
+from app.repo import configs, items
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-LOOKBACK = {Cadence.weekly: 7 * 24, Cadence.monthly: 30 * 24}
+LOOKBACK = {Format.article: 7 * 24}
 MAX_CANDIDATES = 120
 MAX_SELECTED = 25
 LANG_NAMES = {"ja": "Japanese", "ko": "Korean", "en": "English"}
 
 
-def _weekly_summaries_for_month(category_id: str) -> str:
-    """Summaries of this month's weekly posts, fed into the monthly stage 1."""
-    recent = posts.recent_by_cadence(Cadence.weekly.value, limit=8)
-    now = datetime.now(timezone.utc)
-    lines = []
-    for p in recent:
-        if p.categoryId != category_id or not p.createdAt:
-            continue
-        created = p.createdAt if p.createdAt.tzinfo else p.createdAt.replace(tzinfo=timezone.utc)
-        if (now - created).days <= 31:
-            lines.append(f"[weekly:{p.id}] {p.title}\n  {p.summary}")
-    return "\n".join(lines)
-
-
-def generate_for_category(category: Category, cadence: Cadence) -> Post | None:
+def generate_for_category(category: Category, post_format: Format) -> Post | None:
     settings = get_settings()
-    template = configs.prompt_template(category.slug, cadence)
+    template = configs.prompt_template(category.slug, post_format)
     if template is None:
-        log.warning("no prompt template", extra={"fields": {"category": category.slug, "cadence": cadence.value}})
+        log.warning("no prompt template", extra={"fields": {"category": category.slug, "format": post_format.value}})
         return None
 
     candidates = items.recent_for_category(
-        category.slug, LOOKBACK[cadence], limit=MAX_CANDIDATES
+        category.slug, LOOKBACK[post_format], limit=MAX_CANDIDATES
     )
     if len(candidates) < 3:
         log.info("too few items", extra={"fields": {"category": category.slug, "n": len(candidates)}})
         return None
 
-    cfg_x = configs.channel_config(category.slug, cadence, Channel.x)
-    cfg_th = configs.channel_config(category.slug, cadence, Channel.threads)
-    cfg_no = configs.channel_config(category.slug, cadence, Channel.notion)
+    cfg_x = configs.channel_config(category.slug, post_format, Channel.x)
+    cfg_th = configs.channel_config(category.slug, post_format, Channel.threads)
+    cfg_no = configs.channel_config(category.slug, post_format, Channel.notion)
     lang = LANG_NAMES.get(cfg_no.language, cfg_no.language)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     usage = TokenUsage()
 
     # ---- stage 1: selection & outline (cheap model) ----
     items_block = prompts.format_items_for_prompt(candidates, include_ids=True)
-    if cadence == Cadence.monthly:
-        weekly_block = _weekly_summaries_for_month(category.slug)
-        if weekly_block:
-            items_block += "\n\nThis month's weekly articles:\n" + weekly_block
 
     keywords_str = ", ".join(template.focusKeywords)
     outline_tpl = template.outlineUserPromptTemplate or "{items}"
@@ -85,14 +67,14 @@ def generate_for_category(category: Category, cadence: Cadence) -> Post | None:
     outline_user = prompts.apply_keywords(outline_user, outline_tpl, template.focusKeywords)
     outline = generate_json(
         settings.openai_model_daily,
-        template.outlineSystemPrompt or prompts.WEEKLY_OUTLINE_SYSTEM,
+        template.outlineSystemPrompt or prompts.ARTICLE_OUTLINE_SYSTEM,
         outline_user,
         usage,
     )
     selected_ids = [
         i for i in outline.get("selected_item_ids", []) if isinstance(i, str)
     ][:MAX_SELECTED]
-    selected = items.get_many([i for i in selected_ids if not i.startswith("weekly:")])
+    selected = items.get_many(selected_ids)
     if not selected:
         selected = candidates[:MAX_SELECTED]
 
@@ -119,7 +101,7 @@ def generate_for_category(category: Category, cadence: Cadence) -> Post | None:
     threads_teaser = str(teasers.get("threads", ""))
 
     post = Post(
-        cadence=cadence,
+        format=post_format,
         categoryId=category.slug,
         status=PostStatus.draft,
         title=str(article.get("title", outline.get("title", ""))),

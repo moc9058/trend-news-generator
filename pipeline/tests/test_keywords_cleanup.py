@@ -2,7 +2,7 @@
 
 from app.collectors.gemini_grounded import GeminiGroundedCollector
 from app.generators import prompts
-from app.models import Cadence, Post, PostStatus, Source, SourceType
+from app.models import Format, Post, PostStatus, Source, SourceType
 
 # ---------- keyword focus helpers ----------
 
@@ -82,8 +82,8 @@ def test_cleanup_drafts_deletes_old_and_records_count(monkeypatch):
     import app.jobs.cleanup_drafts as cd
 
     stale = [
-        Post(id="p1", cadence=Cadence.weekly, categoryId="x", status=PostStatus.draft),
-        Post(id="p2", cadence=Cadence.monthly, categoryId="y", status=PostStatus.draft),
+        Post(id="p1", format=Format.article, categoryId="x", status=PostStatus.draft),
+        Post(id="p2", format=Format.report, categoryId="y", status=PostStatus.draft),
     ]
     deleted: list[str] = []
     captured: dict = {}

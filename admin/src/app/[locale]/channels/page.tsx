@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
-import { Card } from '@/components/ui';
-import { CADENCES, CHANNELS, LANGUAGES } from '@/lib/constants';
+import { Card, PageHeader, Table, tdCls, thCls } from '@/components/ui';
+import { FORMATS, CHANNELS, LANGUAGES } from '@/lib/constants';
 import { saveChannelConfig } from '@/lib/actions';
 import { getCategories, getChannelConfigs } from '@/lib/data';
 
@@ -14,49 +14,53 @@ export default async function ChannelsPage() {
   const byId = new Map(configs.map((c) => [c.id, c]));
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold">{t('title')}</h1>
-      <p className="text-xs text-slate-500">{t('hint')}</p>
+    <div className="space-y-5">
+      <PageHeader title={t('title')} hint={t('hint')} />
       {categories.map((cat) => (
-        <Card key={cat.slug} title={cat.name}>
-          <table className="w-full text-sm">
+        <Card key={cat.slug} title={cat.name} flush>
+          <Table>
             <thead>
-              <tr className="text-left text-xs text-slate-500">
-                <th className="py-1">{tc('cadence')}</th>
-                {CHANNELS.map((ch) => <th key={ch}>{ch}</th>)}
+              <tr>
+                <th className={thCls}>{tc('format')}</th>
+                {CHANNELS.map((ch) => (
+                  <th key={ch} className={`${thCls} font-mono normal-case`}>{ch}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {CADENCES.map((cadence) => (
-                <tr key={cadence} className="border-t border-slate-100">
-                  <td className="py-2 text-xs font-medium">{cadence}</td>
+              {FORMATS.map((fmt) => (
+                <tr key={fmt}>
+                  <td className={`${tdCls} font-mono text-xs font-medium text-ink`}>{fmt}</td>
                   {CHANNELS.map((channel) => {
-                    const id = `${cat.slug}_${cadence}_${channel}`;
+                    const id = `${cat.slug}_${fmt}_${channel}`;
                     const cfg = byId.get(id);
                     return (
-                      <td key={channel} className="py-2 pr-4">
+                      <td key={channel} className={tdCls}>
                         <form
                           action={async (formData: FormData) => {
                             'use server';
                             await saveChannelConfig(
-                              id, cat.slug, cadence, channel,
+                              id, cat.slug, fmt, channel,
                               formData.get('enabled') === 'on',
                               String(formData.get('language') ?? 'en'),
                             );
                           }}
-                          className="flex items-center gap-2"
+                          className="flex items-center gap-2.5"
                         >
                           <input
-                            name="enabled" type="checkbox"
+                            name="enabled"
+                            type="checkbox"
                             defaultChecked={cfg?.enabled ?? false}
+                            className="h-4 w-4 rounded border-line"
                           />
                           <select
-                            name="language" defaultValue={cfg?.language ?? 'en'}
-                            className="rounded border border-slate-300 px-1 py-0.5 text-xs"
+                            name="language"
+                            defaultValue={cfg?.language ?? 'en'}
+                            className="rounded-md border border-line bg-white px-1.5 py-1 font-mono text-xs text-slate-700 focus:border-accent focus:outline-none"
                           >
                             {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
                           </select>
-                          <button className="text-xs text-sky-700 underline">
+                          <button className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft">
                             {tc('save')}
                           </button>
                         </form>
@@ -66,7 +70,7 @@ export default async function ChannelsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </Card>
       ))}
     </div>

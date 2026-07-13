@@ -7,7 +7,11 @@
     "sources": "ソース",
     "prompts": "プロンプト",
     "channels": "チャネル",
-    "settings": "設定"
+    "settings": "設定",
+    "groupMonitor": "モニタリング",
+    "groupContent": "コンテンツ",
+    "groupPipeline": "パイプライン設定",
+    "groupSystem": "システム"
   },
   "common": {
     "save": "保存",
@@ -18,7 +22,7 @@
     "disabled": "無効",
     "language": "言語",
     "category": "カテゴリ",
-    "cadence": "周期",
+    "format": "フォーマット",
     "channel": "チャネル",
     "status": "ステータス",
     "title": "タイトル",
@@ -42,13 +46,20 @@
     "noDrafts": "承認待ちはありません",
     "viewAll": "すべて表示",
     "automation": "自動実行設定",
-    "automationHint": "カテゴリ×周期ごとに自動生成のON/OFFをチェックボックスで選び、「保存」を押してください。チェックを外した組み合わせは日次・週次・月次の実行時にスキップされます。",
+    "automationHint": "カテゴリ×フォーマットごとに自動生成のON/OFFをチェックボックスで選び、「保存」を押してください。チェックを外した組み合わせは短文・記事・レポートの実行時にスキップされます。",
     "generate": "コンテンツ生成（手動実行）",
-    "generateHint": "「① 収集」で最新情報を集めてから、「② 生成」を押します。日次は各チャネルへ自動投稿、週次・月次は下書きを作成します（承認は下書きページで）。実行状況は下の「ジョブ実行履歴」で確認できます。",
+    "generateHint": "「① 収集」で最新情報を集めてから、「② 生成」を押します。短文は各チャネルへ自動投稿、記事・レポートは下書きを作成します（承認は下書きページで）。実行状況は下の「ジョブ実行履歴」で確認できます。",
     "collect": "① 収集",
-    "daily": "② 日次生成",
-    "weekly": "② 週次生成",
-    "monthly": "② 月次生成"
+    "short": "② 短文生成",
+    "article": "② 記事生成",
+    "flowTitle": "パイプライン状態",
+    "stageCollect": "収集",
+    "stageGenerate": "生成",
+    "stagePublish": "投稿",
+    "neverRan": "実行履歴なし",
+    "runOk": "成功",
+    "runFailed": "失敗",
+    "noPosts": "投稿はありません"
   },
   "drafts": {
     "title": "下書き",
@@ -70,7 +81,8 @@
   "posts": {
     "title": "投稿履歴",
     "channelStatus": "チャネル別ステータス",
-    "cost": "コスト"
+    "cost": "コスト",
+    "empty": "投稿はありません"
   },
   "categories": {
     "title": "カテゴリ",
@@ -95,25 +107,25 @@
   "prompts": {
     "title": "プロンプトテンプレート",
     "focusKeywords": "焦点キーワード（カンマ区切り）",
-    "focusKeywordsHint": "このカテゴリ×周期で重視したいキーワード。収集（Web検索）と記事生成の両方で優先されます（重視。キーワード以外の重要ニュースも拾います）。空欄なら従来どおり。システムプロンプトを触らなくても、ここだけで焦点を指定できます。",
+    "focusKeywordsHint": "このカテゴリ×フォーマットで重視したいキーワード。収集（Web検索）と記事生成の両方で優先されます（重視。キーワード以外の重要ニュースも拾います）。空欄なら従来どおり。システムプロンプトを触らなくても、ここだけで焦点を指定できます。",
     "systemPrompt": "システムプロンプト",
     "userPrompt": "ユーザープロンプトテンプレート",
-    "outlineSystemPrompt": "アウトライン用システムプロンプト（週次・月次の第1段階）",
-    "outlineUserPrompt": "アウトライン用ユーザープロンプト（週次・月次の第1段階）",
+    "outlineSystemPrompt": "アウトライン用システムプロンプト（記事・レポートの第1段階）",
+    "outlineUserPrompt": "アウトライン用ユーザープロンプト（記事・レポートの第1段階）",
     "modelOverride": "モデル上書き（空欄=デフォルト）",
-    "placeholders": "プレースホルダ: '{items}' '{category}' '{date}' '{language}' '{keywords}'（日次: '{x_language}' '{threads_language}' '{notion_language}' / 記事: '{theme}' '{outline}'）。焦点キーワードは自動付加されるため '{keywords}' は任意です。",
+    "placeholders": "プレースホルダ: '{items}' '{category}' '{date}' '{language}' '{keywords}'（短文: '{x_language}' '{threads_language}' '{notion_language}' / 記事: '{theme}' '{outline}'）。焦点キーワードは自動付加されるため '{keywords}' は任意です。",
     "notSeeded": "未作成"
   },
   "channels": {
     "title": "チャネルマトリクス",
-    "hint": "カテゴリ×周期×チャネル単位の言語とON/OFF。日次は自動投稿、週次・月次は下書き承認後に投稿されます。"
+    "hint": "カテゴリ×フォーマット×チャネル単位の言語とON/OFF。短文は自動投稿、記事・レポートは下書き承認後に投稿されます。"
   },
   "settings": {
     "title": "設定",
     "app": "アプリケーション",
     "timezone": "タイムゾーン",
-    "dailyRequireApproval": "日次投稿も承認必須にする（安全弁）",
-    "xAllowUrlOnDaily": "日次XにURLを許可（$0.015→$0.20/件）",
+    "shortRequireApproval": "短文投稿も承認必須にする（安全弁）",
+    "xAllowUrlOnShort": "短文XにURLを許可（$0.015→$0.20/件）",
     "attachImages": "収集画像を投稿に添付する",
     "notionDatabaseId": "Notion データベースID",
     "jobs": "ジョブ手動実行"

@@ -21,9 +21,8 @@ app = FastAPI(title="trend-news pipeline-api")
 
 JOB_MODULES = {
     "collect": "app.jobs.collect",
-    "generate_daily": "app.jobs.generate_daily",
-    "generate_weekly": "app.jobs.generate_weekly",
-    "generate_monthly": "app.jobs.generate_monthly",
+    "generate_short": "app.jobs.generate_short",
+    "generate_article": "app.jobs.generate_article",
     "cleanup_drafts": "app.jobs.cleanup_drafts",
     "refresh_threads_token": "app.jobs.refresh_threads_token",
     "seed": "app.jobs.seed",
@@ -94,7 +93,7 @@ def retry_channel(post_id: str, req: RetryRequest) -> dict:
 
 
 def _cloud_run_job_name(api_name: str) -> str:
-    """`generate_daily` -> `job-generate-daily` (the deployed Cloud Run Job)."""
+    """`generate_short` -> `job-generate-short` (the deployed Cloud Run Job)."""
     return "job-" + api_name.replace("_", "-")
 
 

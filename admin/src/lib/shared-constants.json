@@ -1,5 +1,5 @@
 {
-  "cadences": ["daily", "weekly", "monthly"],
+  "formats": ["short", "article", "report"],
   "channels": ["x", "threads", "notion"],
   "postStatuses": [
     "draft",
@@ -14,9 +14,9 @@
   "languages": ["ja", "ko", "en"],
   "jobTypes": [
     "collect",
-    "generate_daily",
-    "generate_weekly",
-    "generate_monthly",
+    "generate_short",
+    "generate_article",
+    "cleanup_drafts",
     "refresh_threads_token",
     "seed"
   ]

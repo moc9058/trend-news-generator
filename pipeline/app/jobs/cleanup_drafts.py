@@ -1,6 +1,6 @@
 """Cleanup job (daily 04:00 JST): delete drafts left unapproved for too long.
 
-Weekly/monthly generation produces drafts (status=draft) that publish only after
+Article/report generation produces drafts (status=draft) that publish only after
 manual approval in the admin UI. Drafts nobody approves would otherwise pile up
 forever; this job removes any older than DRAFT_TTL_DAYS. Published/approved posts
 are never touched (old_drafts filters status=draft).

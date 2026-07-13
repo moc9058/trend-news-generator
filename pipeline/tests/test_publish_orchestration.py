@@ -5,9 +5,9 @@ import pytest
 import app.publishers.base as base
 from app.models import (
     AppSettings,
-    Cadence,
     ChannelState,
     ChannelStatus,
+    Format,
     Post,
     PostStatus,
 )
@@ -52,7 +52,7 @@ def store(monkeypatch):
 
 def _post(**channels) -> Post:
     return Post(
-        id="p1", cadence=Cadence.weekly, categoryId="cat",
+        id="p1", format=Format.article, categoryId="cat",
         status=PostStatus.approved, title="T", body="Body",
         channels=channels,
     )
@@ -122,7 +122,7 @@ def test_only_channel_retry(store):
     assert store["calls"] == ["x"]
 
 
-def test_daily_x_gets_no_url(store, monkeypatch):
+def test_short_x_gets_no_url(store, monkeypatch):
     captured = {}
 
     def fake_x_publish(text, **kw):
@@ -132,15 +132,15 @@ def test_daily_x_gets_no_url(store, monkeypatch):
     monkeypatch.setattr(base.x, "publish", fake_x_publish)
     post = _post(
         notion=ChannelState(enabled=True),
-        x=ChannelState(enabled=True, text="daily brief"),
+        x=ChannelState(enabled=True, text="short brief"),
     )
-    post.cadence = Cadence.daily
+    post.format = Format.short
     store["post"] = post
     base.publish_post("p1")
     assert "notion.so" not in captured["text"]
 
 
-def test_weekly_x_teaser_gets_notion_url(store, monkeypatch):
+def test_article_x_teaser_gets_notion_url(store, monkeypatch):
     captured = {}
 
     def fake_x_publish(text, **kw):
@@ -150,7 +150,7 @@ def test_weekly_x_teaser_gets_notion_url(store, monkeypatch):
     monkeypatch.setattr(base.x, "publish", fake_x_publish)
     store["post"] = _post(
         notion=ChannelState(enabled=True),
-        x=ChannelState(enabled=True, text="weekly teaser"),
+        x=ChannelState(enabled=True, text="article teaser"),
     )
     base.publish_post("p1")
     assert "https://notion.so/p" in captured["text"]

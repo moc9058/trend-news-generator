@@ -1,4 +1,4 @@
-"""Publish orchestration shared by the daily job and the admin approve/retry
+"""Publish orchestration shared by the short-form job and the admin approve/retry
 endpoints.
 
 Order is notion → x → threads: long-form teasers need the Notion public URL.
@@ -32,7 +32,7 @@ def _publish_notion(post: Post) -> None:
         post.title,
         body,
         category=_category_name(post.categoryId),
-        cadence=post.cadence.value,
+        post_format=post.format.value,
         date_iso=datetime.now(timezone.utc).strftime("%Y-%m-%d"),
     )
     state.externalId = page_id
@@ -57,8 +57,8 @@ def _publish_x(post: Post, notion_url: str) -> None:
     state = post.channels["x"]
     text = state.text
     app = configs.app_settings()
-    is_daily = post.cadence.value == "daily"
-    if notion_url and (not is_daily or app.xAllowUrlOnDaily):
+    is_short = post.format.value == "short"
+    if notion_url and (not is_short or app.xAllowUrlOnShort):
         text = renderer.append_url(text, notion_url, renderer.fits_x)
     state.externalId = x.publish(
         text,
@@ -73,7 +73,7 @@ def _publish_threads(post: Post, post_id: str, notion_url: str) -> None:
     state = post.channels["threads"]
     if not state.containerId:
         text = state.text
-        if notion_url and post.cadence.value != "daily":
+        if notion_url and post.format.value != "short":
             text = renderer.append_url(text, notion_url, renderer.fits_threads)
         image_url = ""
         if state.imageGcsPath and configs.app_settings().attachImages:

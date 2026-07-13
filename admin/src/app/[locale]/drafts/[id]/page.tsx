@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { DraftEditor } from '@/components/DraftEditor';
-import { StatusBadge } from '@/components/ui';
+import { Chip, StatusBadge } from '@/components/ui';
 import { getPost } from '@/lib/data';
 
 export default async function DraftDetailPage({
@@ -14,14 +14,15 @@ export default async function DraftDetailPage({
   if (!post) notFound();
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <h1 className="text-xl font-bold">{t('editDraft')}</h1>
+    <div>
+      <header className="mb-6 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-bold tracking-tight text-ink">{t('editDraft')}</h1>
         <StatusBadge status={post.status} />
-        <span className="text-xs text-slate-400">
-          {post.cadence} / {post.categoryId} / ${post.tokenUsage?.costUsd?.toFixed(3) ?? '0'}
+        <Chip>{post.format}</Chip>
+        <span className="font-mono text-xs text-slate-400">
+          {post.categoryId} · ${post.tokenUsage?.costUsd?.toFixed(3) ?? '0'}
         </span>
-      </div>
+      </header>
       <DraftEditor post={post} />
     </div>
   );

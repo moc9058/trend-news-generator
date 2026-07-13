@@ -35,9 +35,11 @@ gcloud run services add-iam-policy-binding pipeline-api --region="$REGION" \
 echo "--- deploy jobs (same image, module entrypoints)"
 for job in "${JOBS[@]}"; do
   module="app.jobs.${job//-/_}"
-  # --max-retries=0 on publishing jobs prevents double posts on crash
+  # Jobs that post from inside the job (generate-short) must NOT retry — a crash
+  # mid-publish would double-post. collect/seed are idempotent; generate-report
+  # (added by a later phase) resumes via a Firestore lease, so retrying is safe.
   retries=0
-  [[ "$job" == "collect" || "$job" == "seed" ]] && retries=1
+  [[ "$job" == "collect" || "$job" == "seed" || "$job" == "generate-report" ]] && retries=1
   gcloud run jobs deploy "job-${job}" \
     --image="$IMAGE" --region="$REGION" \
     --service-account="$PIPELINE_SA" \

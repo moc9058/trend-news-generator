@@ -1,10 +1,10 @@
 import { getTranslations } from 'next-intl/server';
-import { Card, btnCls, inputCls } from '@/components/ui';
+import { btnCls, Card, inputCls, labelCls, PageHeader } from '@/components/ui';
 import { savePromptTemplate } from '@/lib/actions';
 import { getPromptTemplate } from '@/lib/data';
 
 const areaCls =
-  'w-full rounded border border-slate-300 p-2 font-mono text-xs focus:border-slate-500 focus:outline-none';
+  'mt-1 w-full rounded-lg border border-line bg-white p-3 font-mono text-xs leading-relaxed text-ink shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
 
 export default async function PromptEditPage({
   params,
@@ -17,46 +17,50 @@ export default async function PromptEditPage({
     getTranslations('common'),
     getPromptTemplate(id),
   ]);
-  const [categoryId, cadence] = [
+  const [categoryId, format] = [
     id.substring(0, id.lastIndexOf('_')),
     id.substring(id.lastIndexOf('_') + 1),
   ];
-  const isLongform = cadence === 'weekly' || cadence === 'monthly';
+  const isLongform = format === 'article' || format === 'report';
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold">{id}</h1>
-      <p className="text-xs text-slate-500">{t('placeholders')}</p>
+    <div>
+      <PageHeader title={id} hint={t('placeholders')} />
       <Card>
-        <form action={savePromptTemplate} className="space-y-3">
+        <form action={savePromptTemplate} className="space-y-4">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="categoryId" value={tpl?.categoryId ?? categoryId} />
-          <input type="hidden" name="cadence" value={tpl?.cadence ?? cadence} />
-          <label className="block rounded border border-sky-200 bg-sky-50 p-3 text-sm">
-            <span className="font-medium">{t('focusKeywords')}</span>
-            <input name="focusKeywords" className={inputCls}
+          <input type="hidden" name="format" value={tpl?.format ?? format} />
+          <label className="block rounded-xl border border-accent-line bg-accent-soft p-4 text-sm">
+            <span className="font-semibold text-accent-hover">{t('focusKeywords')}</span>
+            <input
+              name="focusKeywords"
+              className={inputCls}
               defaultValue={(tpl?.focusKeywords ?? []).join(', ')}
-              placeholder="AI, semiconductors, monetary policy" />
-            <span className="mt-1 block text-xs text-slate-500">{t('focusKeywordsHint')}</span>
+              placeholder="AI, semiconductors, monetary policy"
+            />
+            <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
+              {t('focusKeywordsHint')}
+            </span>
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             {t('systemPrompt')}
             <textarea name="systemPrompt" rows={6} className={areaCls}
               defaultValue={tpl?.systemPrompt ?? ''} />
           </label>
-          <label className="block text-sm">
+          <label className={labelCls}>
             {t('userPrompt')}
             <textarea name="userPromptTemplate" rows={12} className={areaCls}
               defaultValue={tpl?.userPromptTemplate ?? ''} />
           </label>
           {isLongform && (
             <>
-              <label className="block text-sm">
+              <label className={labelCls}>
                 {t('outlineSystemPrompt')}
                 <textarea name="outlineSystemPrompt" rows={4} className={areaCls}
                   defaultValue={tpl?.outlineSystemPrompt ?? ''} />
               </label>
-              <label className="block text-sm">
+              <label className={labelCls}>
                 {t('outlineUserPrompt')}
                 <textarea name="outlineUserPromptTemplate" rows={8} className={areaCls}
                   defaultValue={tpl?.outlineUserPromptTemplate ?? ''} />
@@ -64,13 +68,18 @@ export default async function PromptEditPage({
             </>
           )}
           <div className="flex max-w-md items-center gap-4">
-            <label className="flex-1 text-sm">
+            <label className={`flex-1 ${labelCls}`}>
               {t('modelOverride')}
               <input name="modelOverride" className={inputCls}
                 defaultValue={tpl?.modelOverride ?? ''} />
             </label>
-            <label className="flex items-center gap-2 pt-4 text-sm">
-              <input name="enabled" type="checkbox" defaultChecked={tpl?.enabled ?? true} />
+            <label className="flex items-center gap-2 pt-5 text-sm text-slate-600">
+              <input
+                name="enabled"
+                type="checkbox"
+                defaultChecked={tpl?.enabled ?? true}
+                className="h-4 w-4 rounded border-line"
+              />
               {tc('enabled')}
             </label>
           </div>

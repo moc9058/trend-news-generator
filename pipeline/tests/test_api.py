@@ -1,14 +1,14 @@
 from fastapi.testclient import TestClient
 
 import app.main as main
-from app.models import Cadence, ChannelState, ChannelStatus, Post, PostStatus
+from app.models import ChannelState, ChannelStatus, Format, Post, PostStatus
 
 client = TestClient(main.app)
 
 
 def _post(status=PostStatus.draft, channel_status=ChannelStatus.pending):
     return Post(
-        id="p1", cadence=Cadence.weekly, categoryId="science-technology",
+        id="p1", format=Format.article, categoryId="science-technology",
         status=status, title="T",
         channels={
             "x": ChannelState(enabled=True, status=channel_status),
@@ -65,11 +65,11 @@ def test_run_unknown_job():
 def test_run_job_accepted(monkeypatch):
     triggered = []
     monkeypatch.setattr(main, "_trigger_job", lambda name: triggered.append(name))
-    resp = client.post("/api/jobs/generate_daily/run")
+    resp = client.post("/api/jobs/generate_short/run")
     assert resp.status_code == 202
     # response carries the Cloud Run Job name; the trigger got the API name
-    assert resp.json() == {"accepted": True, "job": "job-generate-daily"}
-    assert triggered == ["generate_daily"]
+    assert resp.json() == {"accepted": True, "job": "job-generate-short"}
+    assert triggered == ["generate_short"]
 
 
 def test_run_job_trigger_failure_is_502(monkeypatch):
@@ -83,5 +83,5 @@ def test_run_job_trigger_failure_is_502(monkeypatch):
 
 
 def test_cloud_run_job_name_mapping():
-    assert main._cloud_run_job_name("generate_daily") == "job-generate-daily"
+    assert main._cloud_run_job_name("generate_short") == "job-generate-short"
     assert main._cloud_run_job_name("collect") == "job-collect"

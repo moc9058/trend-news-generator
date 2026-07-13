@@ -27,11 +27,16 @@ export function ActionButton({
           startTransition(async () => setResult(await action()));
         }}
       >
-        {pending ? '…' : label}
+        {pending && (
+          <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-60" />
+        )}
+        {label}
       </button>
       {result && (
-        <span className={`text-xs ${result.ok ? 'text-emerald-700' : 'text-red-700'}`}>
-          {result.ok ? 'OK' : result.detail.slice(0, 200)}
+        <span
+          className={`font-mono text-xs ${result.ok ? 'text-emerald-600' : 'text-red-600'}`}
+        >
+          {result.ok ? '✓' : result.detail.slice(0, 200)}
         </span>
       )}
     </span>

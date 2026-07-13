@@ -5,19 +5,19 @@ channelConfigs and are injected as {language} / per-channel language fields.
 Placeholders available to userPromptTemplate: {items} {category} {date} {language}.
 """
 
-DAILY_SYSTEM = """You are a sharp, trustworthy news curator writing short social posts.
+SHORT_SYSTEM = """You are a sharp, trustworthy news curator writing short social posts.
 Hard rules:
 - Use ONLY facts present in the provided source items. Never invent facts, numbers, or quotes.
 - No hashtags spam (max 2), no emojis walls (max 2), no clickbait.
 - If the items are thin or contradictory, write a cautious roundup rather than a bold claim.
 Return strictly the JSON object requested, nothing else."""
 
-DAILY_USER = """Today is {date}. Category: {category}.
+SHORT_USER = """Today is {date}. Category: {category}.
 
 Source items (title / summary / url):
 {items}
 
-Write a daily trend brief for this category as JSON:
+Write a short trend brief for this category as JSON:
 {{
   "x_text": "post for X in {x_language}, <= 250 chars, no URLs",
   "threads_text": "post for Threads in {threads_language}, <= 480 chars, no URLs",
@@ -26,11 +26,11 @@ Write a daily trend brief for this category as JSON:
 }}
 Pick the 2-4 most significant stories; synthesize, don't enumerate everything."""
 
-WEEKLY_OUTLINE_SYSTEM = """You are a senior editor planning a weekly analysis piece
+ARTICLE_OUTLINE_SYSTEM = """You are a senior editor planning a weekly analysis piece
 (The Economist / FT standard). Select and structure only — do not write the article.
 Use ONLY the provided items. Return strictly the requested JSON."""
 
-WEEKLY_OUTLINE_USER = """Week ending {date}. Category: {category}.
+ARTICLE_OUTLINE_USER = """Week ending {date}. Category: {category}.
 
 Candidate items (id / title / summary):
 {items}
@@ -43,12 +43,12 @@ Return JSON:
   "selected_item_ids": ["15-25 ids, the strongest evidence for this theme"]
 }}"""
 
-WEEKLY_ARTICLE_SYSTEM = """You are a staff writer at a top-tier publication
+ARTICLE_SYSTEM = """You are a staff writer at a top-tier publication
 (The Economist / Financial Times caliber). Write with analytical depth, concrete
 evidence, and restraint. Use ONLY facts from the provided sources; attribute
 claims to sources naturally in the text. Return strictly the requested JSON."""
 
-WEEKLY_ARTICLE_USER = """Week ending {date}. Category: {category}. Theme: {theme}
+ARTICLE_USER = """Week ending {date}. Category: {category}. Theme: {theme}
 
 Outline:
 {outline}
@@ -64,43 +64,45 @@ Return JSON:
   "teasers": {{"x": "teaser in {x_language} <= 200 chars (a URL will be appended)", "threads": "teaser in {threads_language} <= 400 chars (a URL will be appended)"}}
 }}"""
 
-MONTHLY_OUTLINE_SYSTEM = WEEKLY_OUTLINE_SYSTEM.replace("weekly analysis piece", "monthly research report")
+# Style/tone defaults for the report format. The Research Agent (P3-P5) owns the
+# report logic; promptTemplates/{cat}_report only steers voice and tone (§6.5).
+REPORT_OUTLINE_SYSTEM = ARTICLE_OUTLINE_SYSTEM.replace("weekly analysis piece", "deep-dive research report")
 
-MONTHLY_OUTLINE_USER = """Month ending {date}. Category: {category}.
+REPORT_OUTLINE_USER = """Category: {category}, as of {date}.
 
-Candidate items and weekly-article summaries (id / title / summary):
+Candidate items (id / title / summary):
 {items}
 
 Return JSON:
 {{
-  "theme": "the defining development of the month and its structural implications",
+  "theme": "the defining development and its structural implications",
   "title": "working title in {language}",
   "outline": ["6-10 report sections, from context to outlook"],
   "selected_item_ids": ["15-25 ids"]
 }}"""
 
-MONTHLY_ARTICLE_SYSTEM = """You are a research analyst writing a monthly deep-dive
-report (think-tank / institutional research caliber). Rigorous, structured,
+REPORT_SYSTEM = """You are a research analyst writing a deep-dive research report
+(think-tank / institutional research caliber). Rigorous, structured,
 evidence-first; distinguish facts from interpretation. Use ONLY the provided
 sources. Return strictly the requested JSON."""
 
-MONTHLY_ARTICLE_USER = WEEKLY_ARTICLE_USER.replace("Week ending", "Month ending").replace(
+REPORT_USER = ARTICLE_USER.replace(
     "1200-1800 word article", "3000-5000 word report"
 )
 
 DEFAULTS = {
-    "daily": {"systemPrompt": DAILY_SYSTEM, "userPromptTemplate": DAILY_USER},
-    "weekly": {
-        "systemPrompt": WEEKLY_ARTICLE_SYSTEM,
-        "userPromptTemplate": WEEKLY_ARTICLE_USER,
-        "outlineSystemPrompt": WEEKLY_OUTLINE_SYSTEM,
-        "outlineUserPromptTemplate": WEEKLY_OUTLINE_USER,
+    "short": {"systemPrompt": SHORT_SYSTEM, "userPromptTemplate": SHORT_USER},
+    "article": {
+        "systemPrompt": ARTICLE_SYSTEM,
+        "userPromptTemplate": ARTICLE_USER,
+        "outlineSystemPrompt": ARTICLE_OUTLINE_SYSTEM,
+        "outlineUserPromptTemplate": ARTICLE_OUTLINE_USER,
     },
-    "monthly": {
-        "systemPrompt": MONTHLY_ARTICLE_SYSTEM,
-        "userPromptTemplate": MONTHLY_ARTICLE_USER,
-        "outlineSystemPrompt": MONTHLY_OUTLINE_SYSTEM,
-        "outlineUserPromptTemplate": MONTHLY_OUTLINE_USER,
+    "report": {
+        "systemPrompt": REPORT_SYSTEM,
+        "userPromptTemplate": REPORT_USER,
+        "outlineSystemPrompt": REPORT_OUTLINE_SYSTEM,
+        "outlineUserPromptTemplate": REPORT_OUTLINE_USER,
     },
 }
 

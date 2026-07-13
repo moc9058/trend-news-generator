@@ -6,10 +6,10 @@ from google.cloud import firestore
 
 from app.models import (
     AppSettings,
-    Cadence,
     Category,
     Channel,
     ChannelConfig,
+    Format,
     PromptTemplate,
     Source,
 )
@@ -48,8 +48,8 @@ def update_source_cache(source_id: str, etag: str, last_modified: str) -> None:
     )
 
 
-def prompt_template(category_id: str, cadence: Cadence) -> PromptTemplate | None:
-    snap = db().collection("promptTemplates").document(f"{category_id}_{cadence.value}").get()
+def prompt_template(category_id: str, post_format: Format) -> PromptTemplate | None:
+    snap = db().collection("promptTemplates").document(f"{category_id}_{post_format.value}").get()
     if not snap.exists:
         return None
     tpl = PromptTemplate(id=snap.id, **snap.to_dict())
@@ -58,15 +58,15 @@ def prompt_template(category_id: str, cadence: Cadence) -> PromptTemplate | None
 
 def category_focus_keywords(category_id: str) -> list[str]:
     """Union (order-preserving, case-insensitive dedupe) of focusKeywords across
-    a category's cadence templates. Collection is per-category and shared across
-    cadences, so it steers the web search with every keyword the user set for the
-    category — regardless of whether a given cadence template is enabled."""
+    a category's format templates. Collection is per-category and shared across
+    formats, so it steers the web search with every keyword the user set for the
+    category — regardless of whether a given format template is enabled."""
     ordered: list[str] = []
     lower_seen: set[str] = set()
-    for cadence in Cadence:
+    for post_format in Format:
         snap = (
             db().collection("promptTemplates")
-            .document(f"{category_id}_{cadence.value}").get()
+            .document(f"{category_id}_{post_format.value}").get()
         )
         if not snap.exists:
             continue
@@ -78,12 +78,12 @@ def category_focus_keywords(category_id: str) -> list[str]:
     return ordered
 
 
-def channel_config(category_id: str, cadence: Cadence, channel: Channel) -> ChannelConfig:
-    doc_id = f"{category_id}_{cadence.value}_{channel.value}"
+def channel_config(category_id: str, post_format: Format, channel: Channel) -> ChannelConfig:
+    doc_id = f"{category_id}_{post_format.value}_{channel.value}"
     snap = db().collection("channelConfigs").document(doc_id).get()
     if not snap.exists:
         return ChannelConfig(
-            id=doc_id, categoryId=category_id, cadence=cadence, channel=channel,
+            id=doc_id, categoryId=category_id, format=post_format, channel=channel,
             enabled=False, language="en",
         )
     return ChannelConfig(id=snap.id, **snap.to_dict())

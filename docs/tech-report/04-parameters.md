@@ -78,7 +78,7 @@ flowchart TB
 | `notion_api_key`(`NOTION_API_KEY`) | (空) | `--set-secrets`(notion-api-key:latest) | Notion 内部インテグレーションのトークン。`publishers/notion.py` |
 | `ieee_api_key`(`IEEE_API_KEY`) | (空) | `--set-secrets`(ieee-api-key:latest。シークレットが存在する場合のみ) | IEEE Xplore API キー(任意)。空なら該当ソースをスキップ。`collectors/ieee_xplore.py` |
 | `threads_app_secret`(`THREADS_APP_SECRET`) | (空) | なし | **宣言のみで現行コードは未使用**(下記の注記参照) |
-| `openai_model_daily`(`OPENAI_MODEL_DAILY`) | `gpt-5.4-mini` | なし(デフォルトのまま) | 日次生成、および長文生成の第1段階(選定)のモデル名。`generators/daily.py`、`generators/longform.py` |
+| `openai_model_daily`(`OPENAI_MODEL_DAILY`) | `gpt-5.4-mini` | なし(デフォルトのまま) | 短文生成、および長文生成の第1段階(選定)の安価モデル名。**フィールド名/env 名は据え置き**(本番ジョブの env 上書きと乖離させないため。CLAUDE.md 落とし穴)。`generators/short.py`、`generators/longform.py` |
 | `openai_model_longform`(`OPENAI_MODEL_LONGFORM`) | `gpt-5.5` | なし | 長文生成の第2段階(本文執筆)のモデル名。`generators/longform.py` |
 | `gemini_model`(`GEMINI_MODEL`) | `gemini-3.5-flash` | なし(下記の注意参照) | グラウンディング収集のモデル名。`collectors/gemini_grounded.py` |
 | `threads_token_secret_name`(`THREADS_TOKEN_SECRET_NAME`) | `threads-access-token` | なし | トークン更新ジョブが新バージョンを書き込む先のシークレット名。`jobs/refresh_threads_token.py` |
@@ -96,12 +96,12 @@ flowchart TB
 
 | シークレット名 | 中身の形式 | 必須か | 消費するジョブ・サービス | 自動ローテーション |
 |---|---|---|---|---|
-| `openai-api-key` | `sk-` で始まる文字列 | 必須 | job-generate-daily / weekly / monthly | なし(手動) |
+| `openai-api-key` | `sk-` で始まる文字列 | 必須 | job-generate-short / article | なし(手動) |
 | `gemini-api-key` | Google API キー(プロジェクト内で発行したもの) | 必須 | job-collect | なし |
-| `x-credentials` | 1行 JSON `{"consumer_key","consumer_secret","access_token","access_token_secret"}` | 必須 | job-generate-daily(日次の自動投稿)、pipeline-api(承認公開・リトライ) | なし |
-| `threads-access-token` | Threads 長期アクセストークン(約60日有効) | 必須 | job-generate-daily、pipeline-api、job-refresh-threads-token | **あり(毎週月曜 03:00 JST に自動更新)** |
-| `threads-user-id` | 数値文字列 | 必須 | job-generate-daily、pipeline-api | なし |
-| `notion-api-key` | `ntn_` / `secret_` で始まるトークン | 必須 | job-generate-daily、pipeline-api | なし |
+| `x-credentials` | 1行 JSON `{"consumer_key","consumer_secret","access_token","access_token_secret"}` | 必須 | job-generate-short(短文の自動投稿)、pipeline-api(承認公開・リトライ) | なし |
+| `threads-access-token` | Threads 長期アクセストークン(約60日有効) | 必須 | job-generate-short、pipeline-api、job-refresh-threads-token | **あり(毎週月曜 03:00 JST に自動更新)** |
+| `threads-user-id` | 数値文字列 | 必須 | job-generate-short、pipeline-api | なし |
+| `notion-api-key` | `ntn_` / `secret_` で始まるトークン | 必須 | job-generate-short、pipeline-api | なし |
 | `ieee-api-key` | IEEE Xplore API キー | **任意**(空でスキップ可) | job-collect | なし |
 
 補足:
@@ -129,16 +129,15 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 - pipeline-api の役割は、投稿の公開(`/api/posts/{id}/publish`)・チャネル単位のリトライ(`/api/posts/{id}/retry-channel`)・ジョブの手動起動(`/api/jobs/{name}/run`。Cloud Run Jobs を呼ぶのではなく、同じイメージ内のジョブモジュールをプロセス内でバックグラウンド実行する)。
 - admin-ui の `PIPELINE_API_URL` はデプロイ時に pipeline-api の URL を取得して埋め込む。`GCS_BUCKET` は注入されているが**現行の admin コードには参照箇所がない**(将来用ないし残置)。
 
-### 4.2 ジョブ7種
+### 4.2 ジョブ6種
 
-全ジョブ共通: 同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-daily → `app.jobs.generate_daily`)。
+全ジョブ共通: 同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-short → `app.jobs.generate_short`)。レポート生成ジョブ `job-generate-report`(retries=**1** — lease/resume で二重実行を防ぐ)は Research Agent(doc 10)で後続フェーズに追加。
 
 | ジョブ | 役割 | max-retries | 起動元 |
 |---|---|---|---|
 | job-collect | 収集(RSS / arXiv / IEEE Xplore / Gemini グラウンディング+画像取得) | **1** | スケジューラ(毎日 06:00) |
-| job-generate-daily | 日次投稿の生成+自動公開 | **0** | スケジューラ(毎日 08:00) |
-| job-generate-weekly | 週次長文の下書き生成 | **0** | スケジューラ(月曜 07:00) |
-| job-generate-monthly | 月次長文の下書き生成 | **0** | スケジューラ(毎月1日 07:00) |
+| job-generate-short | 短文投稿の生成+自動公開 | **0** | スケジューラ(毎日 08:00) |
+| job-generate-article | 記事(長文)の下書き生成 | **0** | スケジューラ(月曜 07:00) |
 | job-cleanup-drafts | 未承認の下書きを30日で自動削除 | **0** | スケジューラ(毎日 04:00) |
 | job-refresh-threads-token | Threads トークンの自動更新 | **0** | スケジューラ(月曜 03:00) |
 | job-seed | 初期データ投入(カテゴリ・ソース・設定の既定値) | **1** | 手動のみ(スケジューラなし) |
@@ -165,15 +164,14 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | スケジューラ名 | cron 式 | JST での意味 | 起動するジョブ | 認証方式 |
 |---|---|---|---|---|
 | sched-collect | `0 6 * * *` | 毎日 06:00 | job-collect | scheduler-sa の OAuth トークン |
-| sched-generate-daily | `0 8 * * *` | 毎日 08:00 | job-generate-daily | 同上 |
-| sched-generate-weekly | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-weekly | 同上 |
-| sched-generate-monthly | `0 7 1 * *` | 毎月1日 07:00 | job-generate-monthly | 同上 |
+| sched-generate-short | `0 8 * * *` | 毎日 08:00 | job-generate-short | 同上 |
+| sched-generate-article | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-article | 同上 |
 | sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上 |
 | sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上 |
 
 - 認証は `--oauth-service-account-email` で scheduler-sa の **OAuth アクセストークン**を付ける方式。宛先が Google 自身の API(googleapis.com)の場合は OAuth を使う(自前サービス宛に使う OIDC ID トークンではない)。
 - job-seed に対応するスケジューラは無い(初期投入は1回だけ手動実行)。
-- 時刻設計の意図: 06:00 収集 → 08:00 日次生成(直近36時間の収集アイテムを利用)。週次・月次は生成しても下書き止まりで、公開は管理画面での承認後(カデンス=日次/週次/月次の周期区分ごとの承認フローは §7)。
+- 時刻設計の意図: 06:00 収集 → 08:00 短文生成(直近36時間の収集アイテムを利用)。記事は生成しても下書き止まりで、公開は管理画面での承認後(フォーマット=short/article/report ごとの承認フローは §7)。
 
 ## 6. IAM マトリクス
 
@@ -209,9 +207,9 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | フィールド | 初期値 | 運用上の意味 |
 |---|---|---|
 | `timezone` | `Asia/Tokyo` | 表示用の情報。**パイプラインのコードはこの値を読まない**(実行時刻を変えたいときは §5 のスケジューラを変える) |
-| `dailyRequireApproval` | `false` | 安全弁。`true` にすると日次投稿も自動公開されず下書き(draft)で止まり、管理画面での承認が必要になる(`generators/daily.py`) |
-| `xAllowUrlOnDaily` | `false` | 日次の X 投稿の末尾に Notion 公開URLを付けるかどうか(`publishers/base.py` の `_publish_x()`)。週次・月次のティーザーにはこの設定に関係なく必ず付く |
-| `attachImages` | `true` | 収集アイテム由来の画像(og:image)を X / Threads 投稿に添付するかどうか(生成時に `generators/daily.py` が画像を選び、公開時に `publishers/base.py` が再確認する) |
+| `shortRequireApproval` | `false` | 安全弁。`true` にすると短文投稿も自動公開されず下書き(draft)で止まり、管理画面での承認が必要になる(`generators/short.py`) |
+| `xAllowUrlOnShort` | `false` | 短文の X 投稿の末尾に Notion 公開URLを付けるかどうか(`publishers/base.py` の `_publish_x()`)。記事(article)のティーザーにはこの設定に関係なく必ず付く |
+| `attachImages` | `true` | 収集アイテム由来の画像(og:image)を X / Threads 投稿に添付するかどうか(生成時に `generators/short.py` が画像を選び、公開時に `publishers/base.py` が再確認する) |
 
 このほか運用上効く Firestore 設定として、`settings/notion` の `databaseId`(Notion の投稿先データベース ID。空だと Notion への公開が `publishers/notion.py` の `publish()` で例外になる)、チャネルごとの言語・有効/無効(`channelConfigs`)、プロンプト本文とモデル上書き(`promptTemplates`)がある。これらの構造も [03-data-model.md](03-data-model.md) に譲る。
 
@@ -235,15 +233,14 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 | 定数 | 値 | 定義場所 | 意味 |
 |---|---|---|---|
-| `LOOKBACK_HOURS` | 36時間 | `generators/daily.py` | 日次生成が対象にする収集アイテムの遡り範囲 |
-| `MAX_ITEMS` | 15件 | `generators/daily.py` | 日次生成のプロンプトに入れる収集アイテムの最大数 |
+| `LOOKBACK_HOURS` | 36時間 | `generators/short.py` | 短文生成が対象にする収集アイテムの遡り範囲 |
+| `MAX_ITEMS` | 15件 | `generators/short.py` | 短文生成のプロンプトに入れる収集アイテムの最大数 |
 | 縮小リトライの目標長 | X 250(加重)/ Threads 480文字 | `generators/daily.py` の `_shrink_retry()` | 文字数超過時に1回だけ再生成する際の指示値(本来の上限 280 / 500 より安全マージンを取る) |
 | 最終トリム | 499文字+「…」 | `generators/daily.py` | 再生成後もなお Threads 上限を超える場合の強制切り詰め |
-| `LOOKBACK` | 週次 168時間(7日)/ 月次 720時間(30日) | `generators/longform.py` | 長文生成の対象期間 |
+| `LOOKBACK` | 記事 168時間(7日) | `generators/longform.py` | 長文生成の対象期間 |
 | `MAX_CANDIDATES` | 120件 | `generators/longform.py` | 第1段階(選定)に渡す候補の上限 |
 | `MAX_SELECTED` | 25件 | `generators/longform.py` | 第2段階(執筆)に渡す採用アイテムの上限 |
 | 最少候補数 | 3件 | `generators/longform.py` | これ未満のカテゴリはその回をスキップ |
-| 月次が参照する週次 | 直近8投稿・31日以内 | `generators/longform.py` の `_weekly_summaries_for_month()` | 月次生成に週次まとめを積み上げる範囲 |
 | 1アイテム本文の上限 | 4,000文字 | `generators/longform.py`(`format_items_for_prompt` の引数) | 第2段階プロンプトに入れる本文の切り詰め |
 
 ### 8.3 文字数制限と整形
@@ -282,7 +279,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ### 8.6 共有の列挙値ファイル(shared/constants.json)
 
-`shared/constants.json` には、カデンス(daily / weekly / monthly)・チャネル(x / threads / notion)・投稿ステータス・ソース種別・言語などの**列挙値**(取り得る値のリスト)が定義されている。これも「コードを変えないと変わらない値」の一種で、扱いに癖がある。
+`shared/constants.json` には、フォーマット(short / article / report)・チャネル(x / threads / notion)・投稿ステータス・ソース種別・言語などの**列挙値**(取り得る値のリスト)が定義されている。これも「コードを変えないと変わらない値」の一種で、扱いに癖がある。
 
 - 管理画面(admin)は `npm run build` の前処理(`admin/scripts/sync-constants.mjs`。`admin/package.json` の `prebuild`)でこのファイルを `admin/src/lib/` にコピーして使う。**変更後は admin の再ビルドが必要**。
 - pipeline 側の同じ列挙は `pipeline/app/models.py` の enum として定義されており、**現行の Python コードは constants.json を読み込まない**。両者の一致は手動で保つ必要がある。
@@ -297,7 +294,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | Threads トークン | 原則触らない(毎週月曜 03:00 に自動更新) | 手動更新が必要になった場合 → [runbook](../runbook.md) |
 | 実行時刻(cron) | `infra/20-schedulers.sh` の `create_sched` 呼び出し行 | 編集して再実行(既存スケジューラは更新に切り替わる) |
 | ハードコード定数(§8) | 該当ソースコード | 修正 → `10-deploy-pipeline.sh`(admin 側の値は `11-deploy-admin.sh`)で再ビルド・再デプロイ |
-| 列挙値(カデンス・チャネル等) | `shared/constants.json` と `pipeline/app/models.py` の両方(§8.6) | pipeline と admin の両方を再ビルド・再デプロイ |
+| 列挙値(フォーマット・チャネル等) | `shared/constants.json` と `pipeline/app/models.py` の両方(§8.6) | pipeline と admin の両方を再ビルド・再デプロイ |
 | 運用フラグ(承認・URL・画像) | 管理画面の Settings ページ | 保存すれば次のジョブ実行から有効(再デプロイ不要) |
 | チャネルの言語・有効/無効、プロンプト | 管理画面(`channelConfigs` / `promptTemplates`) | 同上。データ構造は [03-data-model.md](03-data-model.md) |
 | IAM・バケット・Firestore インデックス | `infra/00-bootstrap.sh` | 再実行(冪等=何度実行しても安全に同じ状態になる) |

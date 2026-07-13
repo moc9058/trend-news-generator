@@ -3,5 +3,25 @@
 @tailwind utilities;
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-paper text-slate-800 antialiased;
+  font-feature-settings: 'tnum';
+}
+
+/* Native form controls pick up the accent (checkboxes, radios, progress). */
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: #0f766e;
+}
+
+::selection {
+  background: #c7e0dc;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
