@@ -12,6 +12,16 @@
   "channelStatuses": ["pending", "published", "failed", "skipped"],
   "sourceTypes": ["rss", "gemini_grounded", "ieee_xplore"],
   "languages": ["ja", "ko", "en"],
+  "researchRunStatuses": [
+    "queued",
+    "running",
+    "awaiting_plan_approval",
+    "awaiting_review",
+    "completed",
+    "failed",
+    "cancelled",
+    "budget_exhausted"
+  ],
   "jobTypes": [
     "collect",
     "generate_short",

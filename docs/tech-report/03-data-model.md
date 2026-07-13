@@ -24,6 +24,12 @@
 | `settings`(doc `app`) | 固定名 `app` | seed・admin | 生成・公開処理・admin | 全体設定(短文の承認要否・画像添付など) |
 | `settings`(doc `notion`) | 固定名 `notion` | seed・admin | Notion publisher・admin | 投稿先 Notion データベースの ID |
 | `settings`(doc `channelHealth`) | 固定名 `channelHealth` | Threads トークン更新ジョブ | admin | Threads トークンの期限・エラー表示用 |
+| `researchRuns` | `rr_{YYYYMMDD}_{ランダム6}` | research API・Research Harness | admin・Harness | レポート調査の状態・計画・予算・lease(§4.7 / doc 10) |
+| `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | Harness R4 | Harness・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
+| `researchRuns/{id}/claims` | `{claimId}` | Harness R5 | Harness・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
+| `researchRuns/{id}/events` | 自動採番 | Harness 全フェーズ | admin | 追記専用の監査ログ(doc 10 §6.5) |
+
+> **研究系4コレクション(`researchRuns` とサブコレクション)は Research Agent(レポート)専用**で、pydantic 定義は `pipeline/app/research/schemas.py`、Firestore アクセスは `pipeline/app/repo/research.py`(本リポジトリ初のトランザクション lease を含む)。全フィールド表・JSON 例・docID 規約・状態機械は一次資料の [`05-detailed-design/10-research-agent.md`](05-detailed-design/10-research-agent.md) を参照。状態値 `researchRunStatuses`(queued / running / awaiting_plan_approval / awaiting_review / completed / failed / cancelled / budget_exhausted)は `shared/constants.json` にあり §7 の enum チェックリスト対象。複合インデックス `researchRuns(status ASC, createdAt ASC)`(§6 の #6)がキュー取得に必要。
 
 ## 3. 各コレクション詳細
 

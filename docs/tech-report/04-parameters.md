@@ -81,6 +81,15 @@ flowchart TB
 | `openai_model_daily`(`OPENAI_MODEL_DAILY`) | `gpt-5.4-mini` | なし(デフォルトのまま) | 短文生成、および長文生成の第1段階(選定)の安価モデル名。**フィールド名/env 名は据え置き**(本番ジョブの env 上書きと乖離させないため。CLAUDE.md 落とし穴)。`generators/short.py`、`generators/longform.py` |
 | `openai_model_longform`(`OPENAI_MODEL_LONGFORM`) | `gpt-5.5` | なし | 長文生成の第2段階(本文執筆)のモデル名。`generators/longform.py` |
 | `gemini_model`(`GEMINI_MODEL`) | `gemini-3.5-flash` | なし(下記の注意参照) | グラウンディング収集のモデル名。`collectors/gemini_grounded.py` |
+| `research_model`(`RESEARCH_MODEL`) | `gpt-5.5` | なし | レポート調査の推論系(計画・検証・執筆・監査)モデル。doc 10 |
+| `research_fast_model`(`RESEARCH_FAST_MODEL`) | `gpt-5.4-mini` | なし | レポート調査の軽量系(クエリ生成・選別・抽出・gap)モデル |
+| `deep_research_provider`(`DEEP_RESEARCH_PROVIDER`) | `openai` | なし | Deep Research 補助のプロバイダ。`openai`/`gemini`/`off` |
+| `deep_research_model`(`DEEP_RESEARCH_MODEL`) | `o4-mini-deep-research` | なし | Deep Research のモデル名(flag 有効時のみ) |
+| `research_budget_usd_default`(`RESEARCH_BUDGET_USD_DEFAULT`) | `10.0` | なし | 1レポートあたりのハード予算上限 |
+| `research_max_loops`(`RESEARCH_MAX_LOOPS`) | `2` | なし | retrieve→gap ループの上限 |
+| `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
+| `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
+| `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
 | `threads_token_secret_name`(`THREADS_TOKEN_SECRET_NAME`) | `threads-access-token` | なし | トークン更新ジョブが新バージョンを書き込む先のシークレット名。`jobs/refresh_threads_token.py` |
 
 補足(重要なものから順に):
@@ -279,7 +288,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ### 8.6 共有の列挙値ファイル(shared/constants.json)
 
-`shared/constants.json` には、フォーマット(short / article / report)・チャネル(x / threads / notion)・投稿ステータス・ソース種別・言語などの**列挙値**(取り得る値のリスト)が定義されている。これも「コードを変えないと変わらない値」の一種で、扱いに癖がある。
+`shared/constants.json` には、フォーマット(short / article / report)・チャネル(x / threads / notion)・投稿ステータス・ソース種別・言語・レポート調査ステータス(`researchRunStatuses`)などの**列挙値**(取り得る値のリスト)が定義されている。これも「コードを変えないと変わらない値」の一種で、扱いに癖がある。
 
 - 管理画面(admin)は `npm run build` の前処理(`admin/scripts/sync-constants.mjs`。`admin/package.json` の `prebuild`)でこのファイルを `admin/src/lib/` にコピーして使う。**変更後は admin の再ビルドが必要**。
 - pipeline 側の同じ列挙は `pipeline/app/models.py` の enum として定義されており、**現行の Python コードは constants.json を読み込まない**。両者の一致は手動で保つ必要がある。
