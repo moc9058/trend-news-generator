@@ -1,6 +1,6 @@
 # 詳細設計 01: pipeline 共通基盤(config・models・normalize・repo・utils)
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(`deleted` 状態・globalChannels・custom_instructions 反映)
 
 ## 1. この文書で分かること
 
@@ -86,7 +86,7 @@ flowchart TB
 | `Cadence` | `daily` `weekly` `monthly` | 投稿のカデンス(周期) |
 | `Channel` | `x` `threads` `notion` | 配信チャネル |
 | `PostStatus` | `draft` `approved` `publishing` `published` `partially_published` `failed` | 投稿全体の状態(下書き `draft` から始まる) |
-| `ChannelStatus` | `pending` `published` `failed` `skipped` | 投稿の中のチャネル単位の状態 |
+| `ChannelStatus` | `pending` `published` `failed` `skipped` `deleted` | 投稿の中のチャネル単位の状態(`deleted` は管理画面からのリモート削除済み) |
 | `SourceType` | `rss` `gemini_grounded` `ieee_xplore` | 収集ソースの種類(arXiv も `rss` として扱う) |
 
 `constants.json` には他に `languages`(`ja` `ko` `en`)と `jobTypes`(6 ジョブ名)があるが、これらに対応する Python の enum は無い。`jobTypes` は `Run.jobType` に入る素の文字列、`languages` は主に管理画面が使う。
@@ -103,7 +103,7 @@ flowchart TB
 - `Category` / `Source` — 何をどこから収集するかの設定
 - `PromptTemplate` — カテゴリ×カデンスごとの生成プロンプト
 - `ChannelConfig` — カテゴリ×カデンス×チャネルごとの有効/言語設定
-- `AppSettings` — `settings/app` に置く全体設定(承認要否・画像添付など)
+- `AppSettings` — `settings/app` に置く全体設定(承認要否・画像添付・チャネル全体スイッチ `globalChannels`(既定 `{x: false, threads: false, notion: true}`)など)
 - `ImageRef` — GCS 上の画像への参照(パスと MIME タイプ)
 
 フィールド名が `categoryId` のような camelCase なのは、Firestore 上のフィールド名と 1:1 で一致させるため(別名変換の層を作らない、という割り切り)。
@@ -295,7 +295,8 @@ def update_fields(post_id: str, fields: dict) -> None:
 | `enabled_sources(category_id)` | カテゴリ配下の有効な収集ソース一覧 |
 | `update_source_cache(source_id, etag, last_modified)` | RSS の条件付き取得用キャッシュ(ETag / Last-Modified)と `lastFetchedAt` を保存 |
 | `prompt_template(category_id, cadence)` | ID `{categoryId}_{cadence}` のテンプレート。**無い、または `enabled` が偽なら `None`** |
-| `channel_config(category_id, cadence, channel)` | ID `{categoryId}_{cadence}_{channel}` の設定。**無ければ既定値を合成して返す** |
+| `channel_config(category_id, cadence, channel)` | ID `{categoryId}_{cadence}_{channel}` の設定。**無ければ既定値を合成して返す**。さらに `settings/app.globalChannels` が false のチャネルは `enabled=False` に強制(グローバルスイッチとの AND) |
+| `custom_instructions(category_id, format)` | `promptTemplates/{categoryId}_{format}` の `customInstructions` を生で読む(テンプレートの `enabled` は無視 — 手動実行にも効かせるため)。無ければ空文字 |
 | `app_settings()` | `settings/app`。無ければ `AppSettings()` の既定値 |
 | `notion_database_id()` | `settings/notion` の `databaseId`。無ければ空文字列 |
 | `update_channel_health(fields)` | `settings/channelHealth` へ merge 書き込み(トークン期限などの健全性情報) |

@@ -1,4 +1,4 @@
-"""Guarded HTTP fetcher for R4 (design §7.1, §6.6).
+"""Guarded HTTP fetcher for the extract phase (design §7.1, §6.6).
 
 Every safety property is enforced here so no connector or phase can bypass it:
   * SSRF guard  — http(s) only; reject private / loopback / link-local / reserved

@@ -111,6 +111,23 @@ def post_tweet(
     return tweet_id
 
 
+@api_retry
+def delete_tweet(tweet_id: str, client: httpx.Client) -> None:
+    creds = _credentials()
+    url = f"{TWEETS_URL}/{tweet_id}"
+    headers = {"Authorization": oauth1_header("DELETE", url, creds)}
+    resp = client.delete(url, headers=headers)
+    if resp.status_code == 404:  # already gone remotely — treat as deleted
+        return
+    resp.raise_for_status()
+    log.info("tweet deleted", extra={"fields": {"id": tweet_id}})
+
+
+def delete(tweet_id: str) -> None:
+    with httpx.Client(timeout=30) as client:
+        delete_tweet(tweet_id, client)
+
+
 def publish(
     text: str,
     *,

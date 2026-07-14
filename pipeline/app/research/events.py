@@ -38,11 +38,15 @@ def phase_end(run_id: str, phase: str, actor: str = "harness", duration_ms: int 
 
 def llm_call(run_id: str, phase: str, actor: str, model: str,
              tokens_in: int, tokens_out: int, cost_usd: float,
-             prompt_version: str = "", ok: bool = True, error: str | None = None) -> None:
+             prompt_version: str = "", ok: bool = True, error: str | None = None,
+             extra_detail: dict | None = None) -> None:
+    detail = {"promptVersion": prompt_version} if prompt_version else {}
+    if extra_detail:
+        detail = {**detail, **extra_detail}
     emit(run_id, AuditEvent(
         phase=phase, actor=actor, action="llm_call", model=model,
         tokensIn=tokens_in, tokensOut=tokens_out, costUsd=cost_usd,
-        ok=ok, error=error, detail={"promptVersion": prompt_version} if prompt_version else {},
+        ok=ok, error=error, detail=detail,
     ))
 
 

@@ -1,4 +1,4 @@
-"""R8 machine citation check (design §8.1 引用妥当性).
+"""review-phase machine citation check (design §8.1 引用妥当性).
 
 v1: every evidenceId the draft cites must exist in the run's evidence set — a
 hallucinated citation (a footnote pointing at nothing) is detected here and its

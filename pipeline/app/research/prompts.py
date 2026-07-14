@@ -82,18 +82,6 @@ Return JSON:
               "evidenceIds": ["ids that support it"], "verdict": "...",
               "stance": "", "isInterpretation": false, "confidence": 0.9}}]}}"""
 
-GAP_SYSTEM = """You assess research coverage per research question and decide
-whether another retrieval loop is warranted. Mark an RQ resolved when it has
-adequate, tiered evidence. For unresolved RQs propose follow-up queries.
-Return strictly the requested JSON."""
-
-GAP_USER = """Per-RQ evidence/tier summary:
-{summary}
-Loops so far: {loops}. Return JSON:
-{{"loops": {loops}, "decision": "loop|finalize",
-  "rqCoverage": [{{"rqId": "rq1", "evidence": 9, "tiers": {{"primary": 4}},
-                   "resolved": true, "gap": "", "nextQueries": []}}]}}"""
-
 WRITE_SYSTEM = """You are a research analyst writing a rigorous, evidence-first
 report in Japanese (canonical language). EVERY factual assertion must cite an
 evidenceId. Distinguish fact (assertion, cited) from interpretation (inference,

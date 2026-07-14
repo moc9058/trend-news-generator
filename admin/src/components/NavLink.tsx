@@ -28,7 +28,7 @@ export function NavLink({
       title={label}
       className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
         active
-          ? 'bg-ink-raise font-semibold text-white'
+          ? 'bg-gradient-to-r from-ink-raise to-ink-raise/50 font-semibold text-white shadow-raised'
           : 'text-ink-muted hover:bg-ink-raise/60 hover:text-white'
       }`}
     >

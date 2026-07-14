@@ -15,7 +15,9 @@ export function PageHeader({
   return (
     <header className="mb-6 flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-ink">{title}</h1>
+        <h1 className="bg-gradient-to-r from-ink to-ink/70 bg-clip-text text-2xl font-bold tracking-tight text-transparent">
+          {title}
+        </h1>
         {hint && <p className="mt-1 max-w-2xl text-sm leading-relaxed text-slate-500">{hint}</p>}
       </div>
       {children && <div className="flex shrink-0 items-center gap-2 pt-1">{children}</div>}
@@ -38,11 +40,11 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+    <section className="overflow-hidden rounded-2xl border border-line bg-white shadow-card transition-shadow hover:shadow-raised">
       {(title || actions) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-gradient-to-r from-paper/40 to-transparent px-5 py-3.5">
           <div>
-            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
+            {title && <h2 className="text-sm font-semibold tracking-tight text-ink">{title}</h2>}
             {hint && <p className="mt-0.5 max-w-3xl text-xs leading-relaxed text-slate-500">{hint}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -76,7 +78,13 @@ export function StatCard({
   footer?: ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-white p-5 shadow-card">
+    <section className="relative overflow-hidden rounded-2xl border border-line bg-white p-5 shadow-card transition-shadow hover:shadow-raised">
+      <span
+        className={`absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r ${
+          danger ? 'from-red-500 to-transparent' : 'from-accent to-transparent'
+        }`}
+        aria-hidden
+      />
       <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
         {label}
       </div>
@@ -107,6 +115,7 @@ const STATUS_STYLES: Record<string, { dot: string; cls: string }> = {
   failed: { dot: 'bg-red-500', cls: 'bg-red-50 text-red-700 border-red-200' },
   pending: { dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
   skipped: { dot: 'bg-slate-300', cls: 'bg-slate-50 text-slate-400 border-slate-200' },
+  deleted: { dot: 'bg-slate-400', cls: 'bg-slate-100 text-slate-500 border-slate-300 line-through' },
   // research run statuses
   queued: { dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
   running: { dot: 'bg-indigo-500', cls: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
@@ -175,10 +184,10 @@ export const inputCls =
 export const labelCls = 'block text-[13px] font-medium text-slate-600';
 
 export const btnCls =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg bg-accent px-3.5 py-2 text-sm font-semibold text-white shadow-card transition-colors hover:bg-accent-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40';
+  'inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-accent to-accent-hover px-3.5 py-2 text-sm font-semibold text-white shadow-card transition-all hover:brightness-110 hover:shadow-raised active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40';
 
 export const btnSecondaryCls =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg border border-line bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-card transition-colors hover:border-slate-300 hover:bg-paper focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40';
+  'inline-flex items-center justify-center gap-1.5 rounded-xl border border-line bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-card transition-all hover:border-accent-line hover:bg-accent-soft hover:text-accent active:scale-[0.98] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40';
 
 export const btnDangerCls =
   'inline-flex items-center justify-center rounded-md px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-40';

@@ -4,7 +4,7 @@ plus arXiv direct (additive) — design §4.3, §7.1.
 The three general databases are tried in order; the first that returns hits wins
 (they overlap heavily, so merging all three wastes budget). arXiv is queried
 separately because it surfaces preprints the others index late. Citation counts
-are captured so R3 can detect seminal papers by被引用数 (design §4.2 example 2).
+are captured so the gather triage can detect seminal papers by被引用数 (design §4.2 example 2).
 """
 
 import feedparser

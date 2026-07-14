@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(test_delete_post.py 追記)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -196,6 +196,20 @@ pytest -v -k "notion"
 
 特筆: 404/409/400/502/202 の使い分けは管理画面([07-admin-ui.md](07-admin-ui.md))のエラー表示と対応しています。
 
+#### test_delete_post.py(7件)— 投稿削除(リモート成果物+doc)
+
+対象: `pipeline/app/publishers/base.py` の `delete_post_channels()` と `pipeline/app/main.py` の `POST /api/posts/{id}/delete`。3 チャネルの削除 API(`x.delete` / `threads.delete` / `notion.archive_page`)は monkeypatch で偽物にしています。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_deletes_all_channels_and_doc()` | 全チャネルのリモート削除 + `deletePost=true` で doc も削除される |
+| `test_deletes_channel_subset_keeps_doc()` | チャネル部分指定なら doc は残り、他チャネルは `published` のまま |
+| `test_report_notion_delete_archives_localized_pages()` | report は `localizations` の言語別 Notion ページもアーカイブされる |
+| `test_remote_error_is_reported_and_blocks_doc_delete()` | リモート削除失敗は `"error: ..."` として報告され、doc 削除がブロックされる |
+| `test_pending_channel_without_artifact_is_disabled()` | 成果物の無い `pending` チャネルは API を呼ばず `skipped` + `enabled=false` になる |
+| `test_delete_endpoint_404()` | 存在しない投稿 → 404 |
+| `test_delete_endpoint_ok()` | エンドポイント正常系(`channels` / `docDeleted` を含む 200 応答) |
+
 ### 5. テスト ⇔ 機能文書の対応表
 
 | テストファイル | 件数 | 主な対象コード | 対応する機能文書 |
@@ -316,7 +330,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `136 passed`(2026-07-14 時点。うち Research Agent が `tests/research/*` に約78件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden R0→R9 通貫 / API / 失敗パターン §7.3)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `136 passed`(2026-07-14 時点。うち Research Agent が `tests/research/*` に約78件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

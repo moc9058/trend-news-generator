@@ -1,6 +1,6 @@
 # 04. パラメーターシート — 設定値の一覧
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14
 
 この文書は trend-news-generator が「いま、どういう設定値で動いているか」の一覧の**正**(基準表)である。値の意味・定義場所・変更時に触る場所だけを扱い、作業手順そのものは扱わない。
 
@@ -78,15 +78,16 @@ flowchart TB
 | `notion_api_key`(`NOTION_API_KEY`) | (空) | `--set-secrets`(notion-api-key:latest) | Notion 内部インテグレーションのトークン。`publishers/notion.py` |
 | `ieee_api_key`(`IEEE_API_KEY`) | (空) | `--set-secrets`(ieee-api-key:latest。シークレットが存在する場合のみ) | IEEE Xplore API キー(任意)。空なら該当ソースをスキップ。`collectors/ieee_xplore.py` |
 | `threads_app_secret`(`THREADS_APP_SECRET`) | (空) | なし | **宣言のみで現行コードは未使用**(下記の注記参照) |
-| `openai_model_daily`(`OPENAI_MODEL_DAILY`) | `gpt-5.4-mini` | なし(デフォルトのまま) | 短文生成、および長文生成の第1段階(選定)の安価モデル名。**フィールド名/env 名は据え置き**(本番ジョブの env 上書きと乖離させないため。CLAUDE.md 落とし穴)。`generators/short.py`、`generators/longform.py` |
-| `openai_model_longform`(`OPENAI_MODEL_LONGFORM`) | `gpt-5.5` | なし | 長文生成の第2段階(本文執筆)のモデル名。`generators/longform.py` |
+| `openai_model_daily`(`OPENAI_MODEL_DAILY`) | `gpt-5.6-luna` | なし(デフォルトのまま) | 短文生成、および長文生成の第1段階(選定)の安価モデル名。**フィールド名/env 名は据え置き**(本番ジョブの env 上書きと乖離させないため。CLAUDE.md 落とし穴)。`generators/short.py`、`generators/longform.py` |
+| `openai_model_longform`(`OPENAI_MODEL_LONGFORM`) | `gpt-5.6-terra` | なし | 長文生成の第2段階(本文執筆)のモデル名。`generators/longform.py` |
 | `gemini_model`(`GEMINI_MODEL`) | `gemini-3.5-flash` | なし(下記の注意参照) | グラウンディング収集のモデル名。`collectors/gemini_grounded.py` |
-| `research_model`(`RESEARCH_MODEL`) | `gpt-5.5` | なし | レポート調査の推論系(計画・検証・執筆・監査)モデル。doc 10 |
-| `research_fast_model`(`RESEARCH_FAST_MODEL`) | `gpt-5.4-mini` | なし | レポート調査の軽量系(クエリ生成・選別・抽出・gap)モデル |
+| `research_planner_model`(`RESEARCH_PLANNER_MODEL`) | `gpt-5.6-sol` | なし | レポート調査の最上位判断(planner・critic)モデル。doc 10 |
+| `research_model`(`RESEARCH_MODEL`) | `gpt-5.6-terra` | なし | レポート調査の推論系(verifier・writer・localizer)モデル。doc 10 |
+| `research_fast_model`(`RESEARCH_FAST_MODEL`) | `gpt-5.6-luna` | なし | レポート調査の軽量系(クエリ精緻化・triage・抽出・テーマ自動選定)モデル |
 | `deep_research_provider`(`DEEP_RESEARCH_PROVIDER`) | `openai` | なし | Deep Research 補助のプロバイダ。`openai`/`gemini`/`off` |
 | `deep_research_model`(`DEEP_RESEARCH_MODEL`) | `o4-mini-deep-research` | なし | Deep Research のモデル名(flag 有効時のみ) |
 | `research_budget_usd_default`(`RESEARCH_BUDGET_USD_DEFAULT`) | `10.0` | なし | 1レポートあたりのハード予算上限 |
-| `research_max_loops`(`RESEARCH_MAX_LOOPS`) | `2` | なし | retrieve→gap ループの上限 |
+| `research_max_loops`(`RESEARCH_MAX_LOOPS`) | `2` | なし | verify→gather ループバックの上限 |
 | `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
 | `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
 | `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
@@ -97,7 +98,7 @@ flowchart TB
 - **`threads_app_secret` は未使用**。リポジトリ全体を検索した結果、参照は `pipeline/app/config.py` の宣言1箇所のみで、`.env.example` にも `infra/01-secrets.sh` にも登場しない。config.py のコメントは「トークン更新ジョブにのみ必要」と述べているが、実装(`publishers/threads.py` の `refresh_long_lived_token()`)は既存トークンだけで更新できる `th_refresh_token` 方式のため、アプリシークレットは不要になっている。コメントが実装より古い。
 - **「本番での上書き元: なし」の項目も、gcloud を手で実行すれば上書きできる**。CLAUDE.md の「本番ジョブには `GEMINI_MODEL` 等の env 上書きが入っている場合がある」はこの手動上書きを指す(infra スクリプト内には存在しない。§4.4)。モデル名を変える前は config.py のデフォルトと本番の実際の環境変数の両方を確認すること。
 - モデル名は Firestore の `promptTemplates` に `modelOverride` が設定されているカテゴリではそちらが優先される(`generators/daily.py` と `generators/longform.py` の `template.modelOverride or settings...`)。→ [03-data-model.md](03-data-model.md)
-- `.env.example` に載っているのは一部の項目だけ(`TIMEZONE`・`THREADS_APP_SECRET`・モデル名3種・`THREADS_TOKEN_SECRET_NAME` は載っていない)。ローカルではデフォルト値で足りるため。
+- `.env.example` に載っているのは一部の項目だけ(`TIMEZONE`・`THREADS_APP_SECRET`・モデル名各種・`THREADS_TOKEN_SECRET_NAME` は載っていない)。ローカルではデフォルト値で足りるため。
 
 ## 3. Secret Manager シークレット表
 
@@ -222,6 +223,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | `shortRequireApproval` | `false` | 安全弁。`true` にすると短文投稿も自動公開されず下書き(draft)で止まり、管理画面での承認が必要になる(`generators/short.py`) |
 | `xAllowUrlOnShort` | `false` | 短文の X 投稿の末尾に Notion 公開URLを付けるかどうか(`publishers/base.py` の `_publish_x()`)。記事(article)のティーザーにはこの設定に関係なく必ず付く |
 | `attachImages` | `true` | 収集アイテム由来の画像(og:image)を X / Threads 投稿に添付するかどうか(生成時に `generators/short.py` が画像を選び、公開時に `publishers/base.py` が再確認する) |
+| `globalChannels` | `{x: false, threads: false, notion: true}` | チャネル全体のキルスイッチ。生成時に `repo/configs.py` の `channel_config()` がカテゴリ別 `channelConfigs.enabled` と **AND** する(false のチャネルは全カテゴリで投稿されない)。管理画面の設定ページで切替 |
 
 このほか運用上効く Firestore 設定として、`settings/notion` の `databaseId`(Notion の投稿先データベース ID。空だと Notion への公開が `publishers/notion.py` の `publish()` で例外になる)、チャネルごとの言語・有効/無効(`channelConfigs`)、プロンプト本文とモデル上書き(`promptTemplates`)がある。これらの構造も [03-data-model.md](03-data-model.md) に譲る。
 

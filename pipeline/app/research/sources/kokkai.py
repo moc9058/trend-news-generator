@@ -1,7 +1,7 @@
 """国会会議録検索システム API connector (design §4.3).
 
 The NDL Diet-record API returns full speech text, so hits carry `contentText` and
-R4 skips the fetch. Speech records are primary sources (発言そのもの).
+the extract phase skips the fetch. Speech records are primary sources (発言そのもの).
 Docs: https://kokkai.ndl.go.jp/api.html  (no key, free).
 """
 
@@ -40,7 +40,7 @@ def parse_speeches(payload: dict) -> list[SourceHit]:
             sourceType="parliamentary_record",
             tierHint="primary",
             connector="kokkai",
-            contentText=speech,  # full text → R4 fetch skipped
+            contentText=speech,  # full text → extract fetch skipped
         ))
     return hits
 

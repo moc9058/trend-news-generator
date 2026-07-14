@@ -1,7 +1,7 @@
 """Article two-stage long-form generation (was the weekly/monthly path).
 
-Stage 1 (gpt-5.4-mini): theme + outline + 15-25 item selection from the period's
-items. Stage 2 (gpt-5.5): full article from the selected items' full text, plus
+Stage 1 (openai_model_daily): theme + outline + 15-25 item selection from the period's
+items. Stage 2 (openai_model_longform): full article from the selected items' full text, plus
 per-channel teasers. Saved as status=draft — publishing happens only after
 approval in the admin UI. (The old monthly deep-dive path is replaced by the
 Research Agent report system; see docs/tech-report/05-detailed-design/10.)
@@ -65,6 +65,7 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
         keywords=keywords_str,
     )
     outline_user = prompts.apply_keywords(outline_user, outline_tpl, template.focusKeywords)
+    outline_user = prompts.apply_custom_instructions(outline_user, template.customInstructions)
     outline = generate_json(
         settings.openai_model_daily,
         template.outlineSystemPrompt or prompts.ARTICLE_OUTLINE_SYSTEM,
@@ -93,6 +94,7 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
     article_user = prompts.apply_keywords(
         article_user, template.userPromptTemplate, template.focusKeywords
     )
+    article_user = prompts.apply_custom_instructions(article_user, template.customInstructions)
     model = template.modelOverride or settings.openai_model_longform
     article = generate_json(model, template.systemPrompt, article_user, usage)
 

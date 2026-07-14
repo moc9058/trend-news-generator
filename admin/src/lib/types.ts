@@ -66,6 +66,7 @@ export interface PromptTemplate {
   outlineUserPromptTemplate?: string;
   modelOverride?: string;
   focusKeywords?: string[];
+  customInstructions?: string;
   enabled: boolean;
 }
 
@@ -94,6 +95,8 @@ export interface AppSettingsDoc {
   shortRequireApproval: boolean;
   xAllowUrlOnShort: boolean;
   attachImages: boolean;
+  /** Global channel switches ANDed with per-category channelConfigs by the pipeline. */
+  globalChannels: Record<string, boolean>;
 }
 
 export interface ChannelHealth {
@@ -168,7 +171,11 @@ export interface ResearchEvent {
   action: string;
   target?: string;
   model?: string;
+  tokensIn?: number;
+  tokensOut?: number;
   costUsd?: number;
   ok: boolean;
   error?: string;
+  durationMs?: number;
+  detail?: Record<string, unknown>;
 }

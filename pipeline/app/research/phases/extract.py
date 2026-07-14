@@ -1,4 +1,4 @@
-"""R4 extract — for each selected hit: obtain text (kokkai already carries it;
+"""extract — for each selected hit: obtain text (kokkai already carries it;
 otherwise fetch through the guarded fetcher), snapshot to GCS with sha256, LLM-
 extract quotes/claims, score reliability, and store an EvidenceRecord keyed by
 urlHash (idempotent). The extract prompt is hardened against injected instructions
@@ -21,7 +21,7 @@ from app.research.schemas import EvidenceRecord, Extraction, Phase, Retrieval
 def run(ctx: RunContext) -> None:
     run = ctx.run
     for hit in ctx.selected:
-        if not ctx.budget.can_afford(Phase.R4) or not ctx.budget.fetch_available():
+        if not ctx.budget.can_afford(Phase.extract) or not ctx.budget.fetch_available():
             break
         url_hash = item_doc_id(canonicalize_url(hit.url))
         text, arch = _obtain_text(ctx, hit, url_hash)
@@ -30,7 +30,7 @@ def run(ctx: RunContext) -> None:
         extraction: Extraction = llm.structured(
             Extraction, get_settings().research_fast_model, EXTRACT_SYSTEM,
             EXTRACT_USER.format(rq=run.theme, title=hit.title, text=text[:12000]),
-            budget=ctx.budget, run_id=run.id, phase=Phase.R4.value,
+            budget=ctx.budget, run_id=run.id, phase=Phase.extract.value,
             actor="extractor", prompt_version=PROMPT_VERSION)
 
         tier = rubric.classify_tier(hit.sourceType, hit.tierHint)
@@ -58,8 +58,8 @@ def _obtain_text(ctx: RunContext, hit, url_hash: str):
     res = ctx.fetcher.fetch(hit.url)
     ctx.budget.note_fetch()
     if res is None:
-        events.fetch(run.id, Phase.R4.value, hit.url, ok=False)
+        events.fetch(run.id, Phase.extract.value, hit.url, ok=False)
         return "", None
-    events.fetch(run.id, Phase.R4.value, hit.url, ok=True)
+    events.fetch(run.id, Phase.extract.value, hit.url, ok=True)
     arch = archive.snapshot(run.id, url_hash, res.data, res.mimeType, "fetcher")
     return extract_text.extract(res.data, res.mimeType), arch

@@ -20,6 +20,10 @@
 3. X の 402/課金系エラー → console.x.com でクレジット残高を補充してからリトライ
 4. 二重投稿の心配は不要: externalId 記録済みチャネルはスキップされ、Threads は containerId から再開
 
+### 誤投稿の削除・チャネルの一括停止
+- **公開済み投稿の削除**: Posts ページのチェックボックスで複数選択して削除(投稿ごと削除)、または投稿詳細ページでチャネル単位に削除。実体は pipeline-api の `POST /api/posts/{id}/delete` — X ツイート/Threads メディアは削除、Notion ページはアーカイブ(report の言語別ページ含む)。**X のスレッド投稿は先頭ツイートしか消えない**(返信ツイートは X 上で手動削除)
+- **チャネルを全カテゴリで止める**: Settings のグローバルチャネルスイッチ(`settings/app.globalChannels`、既定 X=off / Threads=off / Notion=on)。カテゴリ別 channelConfigs と AND で効き、次の生成から反映(既公開の投稿には影響しない)
+
 ### Threads トークン
 - ダッシュボードに赤バナー（refresh 失敗）または期限14日未満 → 手動リフレッシュ: Settings → `refresh_threads_token` **今すぐ実行**
 - 完全失効した場合: docs/setup-credentials.md §2 の手順で再OAuth → `gcloud secrets versions add threads-access-token --data-file=-`

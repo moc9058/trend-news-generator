@@ -5,11 +5,22 @@
 #   00-bootstrap.sh -> [01-secrets.sh] -> 10-deploy-pipeline.sh -> job-seed
 #   -> 11-deploy-admin.sh -> 20-schedulers.sh
 #
+# POLICY: every update ships through this script. Routine code/config/schema
+# updates need nothing but a plain ./deploy.sh — 10-deploy-pipeline.sh resets
+# env vars on every deploy (--set-env-vars replaces the full set), so config.py
+# defaults are always authoritative after a deploy, and a post-deploy model
+# check (below) warns about the two remaining drift sources. One-time DATA
+# migrations get their own flag (like --migrate below) instead of a manual
+# runbook-only procedure; add new flags here rather than documenting hand steps.
+#
 # --migrate runs the cadence->format migration (docs/runbook.md 「区分リネーム移行」)
 # in the safe order: backup -> indexes -> PAUSE schedulers -> deploy -> migrate
 # (dry-run then apply) -> admin -> schedulers -> RESUME -> delete orphans. Use it
 # once to roll the rename onto an existing environment; a plain ./deploy.sh only
 # ships code/infra and must NOT be used alone for the rename.
+# (The 2026-07 research-phase rename R0–R9 -> plan..review needs NO flag: stored
+# runs are bridged in code by schemas.LEGACY_PHASE_MAP, so plain ./deploy.sh is
+# the complete rollout.)
 #
 # 01-secrets.sh is interactive (prompts for API keys) and is SKIPPED by default;
 # pass --with-secrets to include it, or run infra/01-secrets.sh by hand.
@@ -28,6 +39,11 @@ skip_backup=0
 usage() {
   cat <<EOF
 Usage: ./deploy.sh [options]
+
+Every update ships through this script: routine code/config/schema updates are
+a plain ./deploy.sh (env vars are reset on deploy, so config.py rules; a final
+warn-only check flags model env overrides / stale promptTemplates.modelOverride).
+One-time data migrations are flags (--migrate); never a manual-only procedure.
 
 Default (code/infra only) chain:
   1. 00-bootstrap.sh       (idempotent; APIs, Firestore indexes, GCS, SAs, IAM)
@@ -100,6 +116,47 @@ confirm() {  # $1 = prompt. Returns 0 (yes) automatically when --yes given.
   local ans; read -r -p "$1 [y/N] " ans; [[ "$ans" == [yY] ]]
 }
 
+# ---- post-deploy model config check (warn-only, never fails the deploy) -------
+# Deploys reset env vars, so config.py is the source of truth for model names.
+# The two ways an old model can still be pinned afterwards:
+#   (a) a *_MODEL env var baked into the deploy scripts themselves
+#   (b) Firestore promptTemplates/*.modelOverride pointing at a legacy model
+check_model_config() {
+  echo "=== model config check (warn-only) ==="
+  local found=0 out
+  for j in "${JOBS[@]}"; do
+    out="$(gcloud run jobs describe "job-${j}" --region="$REGION" --format=yaml 2>/dev/null \
+           | grep -iE '^\s*-?\s*name: .*MODEL' || true)"
+    [[ -n "$out" ]] && { echo "  !! job-${j} has a model env override:"; echo "$out"; found=1; }
+  done
+  out="$(gcloud run services describe pipeline-api --region="$REGION" --format=yaml 2>/dev/null \
+         | grep -iE '^\s*-?\s*name: .*MODEL' || true)"
+  [[ -n "$out" ]] && { echo "  !! pipeline-api has a model env override:"; echo "$out"; found=1; }
+
+  local py; py="$(pick_python)"
+  if ( cd ../pipeline && "$py" -c "import google.cloud.firestore, app.config" ) 2>/dev/null; then
+    ( cd ../pipeline && "$py" - <<'PY'
+from app.config import get_settings
+from google.cloud import firestore
+
+s = get_settings()
+current = {s.openai_model_daily, s.openai_model_longform, s.research_model,
+           s.research_fast_model, s.research_planner_model}
+stale = [(d.id, mo) for d in firestore.Client().collection("promptTemplates").stream()
+         if (mo := (d.to_dict() or {}).get("modelOverride")) and mo not in current]
+for doc_id, mo in stale:
+    print(f"  !! promptTemplates/{doc_id} modelOverride={mo} (not a current config.py model)")
+if not stale:
+    print("  promptTemplates.modelOverride: ok (none pin a non-current model)")
+PY
+    ) || echo "  (promptTemplates check errored — verify modelOverride by hand)"
+  else
+    echo "  (promptTemplates check skipped — needs pipeline env + ADC; verify modelOverride by hand)"
+  fi
+  [[ "$found" == 0 ]] && echo "  env overrides: ok (none found)"
+  return 0
+}
+
 # ---- migration rollout -------------------------------------------------------
 
 if [[ "$migrate" == 1 ]]; then
@@ -165,6 +222,8 @@ if [[ "$migrate" == 1 ]]; then
     echo "  (kept for rollback — delete later, runbook step 9)"
   fi
 
+  check_model_config
+
   echo ""
   echo "migration deploy complete. REMAINING MANUAL STEPS (runbook step 10):"
   echo "  - smoke test: trigger a short run + one research run; verify admin grids & 3-lang draft"
@@ -207,5 +266,7 @@ else
   echo "=== [6/6] schedulers ==="
   ./20-schedulers.sh
 fi
+
+check_model_config
 
 echo "deploy complete."

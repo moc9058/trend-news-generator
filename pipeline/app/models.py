@@ -41,6 +41,7 @@ class ChannelStatus(str, Enum):
     published = "published"
     failed = "failed"
     skipped = "skipped"
+    deleted = "deleted"  # remote artifact removed via the admin delete action
 
 
 class SourceType(str, Enum):
@@ -82,6 +83,9 @@ class PromptTemplate(BaseModel):
     # focus keywords for this category x format: steer collection (union per
     # category) and give extra weight during generation. Empty = no steering.
     focusKeywords: list[str] = []
+    # free-form standing requests from the owner (any of ko/ja/en); appended to
+    # the generation prompt. Never changes output languages (channelConfigs own those).
+    customInstructions: str = ""
     enabled: bool = True
 
 
@@ -205,3 +209,8 @@ class AppSettings(BaseModel):
     shortRequireApproval: bool = False
     xAllowUrlOnShort: bool = False
     attachImages: bool = True
+    # Global channel kill-switches, ANDed with per-category channelConfigs at
+    # generation time. Defaults: Notion on, X/Threads off (cost control).
+    globalChannels: dict[str, bool] = Field(
+        default_factory=lambda: {"x": False, "threads": False, "notion": True}
+    )

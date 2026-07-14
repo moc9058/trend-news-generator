@@ -1,4 +1,4 @@
-"""P3/P4: golden R0→R9 integration test (design §8.1 L2).
+"""P3/P4: golden plan→review integration test (design §8.1 L2).
 
 Runs the full Research Harness end-to-end with the LLM, connectors, fetcher, GCS
 and Firestore all mocked. Asserts the DoD: a 3-language draft Post(format=report)
@@ -68,7 +68,10 @@ def store(monkeypatch):
     counter = {"n": 0}
 
     def fake_structured(schema, model, system, user, *, budget, run_id, phase, actor,
-                        prompt_version=""):
+                        prompt_version="", extra_detail=None):
+        if actor == "retriever":
+            # query refinement (gather retrieval leg): one refined query
+            return schema.model_validate({"queries": [{"query": "refined query", "language": "ja"}]})
         if actor == "planner":
             return schema.model_validate({"themeClass": "politics_history", "contested": True,
                 "rqs": [{"id": "rq1", "q": "戦前の天皇の法的権限", "strategies": ["kokkai", "academic"]},
@@ -169,7 +172,7 @@ def test_golden_full_run_produces_trilingual_report_post(store):
         id="rr_20260801_test01", trigger="manual", requestedBy="u@example.com",
         categoryId="geopolitics-history", theme="天皇の戦争への責任",
         budget=BudgetState(usdCap=10.0), languages=["ja", "ko", "en"],
-        canonicalLanguage="ja", status="running", phase="R0")
+        canonicalLanguage="ja", status="running", phase="plan")
     store.runs[run.id] = run
 
     ctx = ResearchHarness(ctx_factory=_factory).run(run.id)
@@ -205,6 +208,133 @@ def test_golden_full_run_produces_trilingual_report_post(store):
 
     # coverage finalized (both RQs have ≥2 evidence) — no unresolved loop needed
     assert ctx.coverage is not None and ctx.coverage.decision == "finalize"
+
+
+def test_golden_run_resumes_from_legacy_phase_name(store):
+    # A pre-consolidation run stored with phase="R0" is bridged by the compat
+    # shim (LEGACY_PHASE_MAP) and completes end-to-end on the 6-phase order.
+    run = ResearchRun(
+        id="rr_legacy", trigger="manual", theme="天皇の戦争への責任",
+        budget=BudgetState(usdCap=10.0), languages=["ja", "ko", "en"],
+        canonicalLanguage="ja", status="running", phase="R0")
+    assert run.phase == "plan"  # shim applied at model build
+    store.runs[run.id] = run
+
+    ctx = ResearchHarness(ctx_factory=_factory).run(run.id)
+    assert ctx is not None
+    assert store.runs[run.id].status == "awaiting_review"
+    assert store.runs[run.id].postId
+
+
+def test_verify_loops_back_to_gather_until_loop_ceiling(store):
+    # rq2's connectors never return hits → rq2 stays unresolved → the verify
+    # coverage leg loops back to gather until research_max_loops (2), then
+    # finalizes with the gap surfaced (§6.4 — never silently dropped).
+    class _Rq1OnlyConn(_FakeConn):
+        def search(self, q):
+            return super().search(q) if q.rqId == "rq1" else []
+
+    def factory(run):
+        return RunContext(
+            run=run, budget=Budget(run.budget),
+            registry={
+                "kokkai": _Rq1OnlyConn("kokkai", [_kokkai_hit()]),
+                "academic": _Rq1OnlyConn("academic", [_academic_hit()]),
+                "news": _Rq1OnlyConn("news", [_news_hit()]),
+            },
+            fetcher=_FakeFetcher())
+
+    run = ResearchRun(
+        id="rr_loop", trigger="manual", theme="天皇の戦争への責任",
+        budget=BudgetState(usdCap=10.0), languages=["ja"],
+        canonicalLanguage="ja", status="running", phase="plan")
+    store.runs[run.id] = run
+
+    ctx = ResearchHarness(ctx_factory=factory).run(run.id)
+    assert ctx is not None
+    assert store.runs[run.id].loops == 2  # looped twice, then hit the ceiling
+    assert ctx.coverage is not None and ctx.coverage.decision == "finalize"
+    unresolved = [rq for rq in ctx.coverage.rqCoverage if not rq.resolved]
+    assert [rq.rqId for rq in unresolved] == ["rq2"]
+    assert store.runs[run.id].status == "awaiting_review"  # still handed off
+
+
+def test_review_revise_loops_back_to_write_once(store, monkeypatch):
+    # First critic verdict fails → review loops back to write for one corrective
+    # rewrite; second verdict passes → handoff runs.
+    import app.research.llm as llm
+
+    orig = llm.structured
+    calls = {"critic": 0, "writer": 0}
+
+    def wrapper(schema, model, system, user, **kw):
+        actor = kw.get("actor")
+        if actor == "writer":
+            calls["writer"] += 1
+        if actor == "critic":
+            calls["critic"] += 1
+            if calls["critic"] == 1:
+                return schema.model_validate({"findings": [
+                    {"kind": "unsupported_assertion", "location": "s1",
+                     "detail": "no citation", "action": "delete"}], "passed": False})
+        return orig(schema, model, system, user, **kw)
+    monkeypatch.setattr(llm, "structured", wrapper)
+
+    run = ResearchRun(
+        id="rr_revise", trigger="manual", theme="天皇の戦争への責任",
+        budget=BudgetState(usdCap=10.0), languages=["ja", "ko", "en"],
+        canonicalLanguage="ja", status="running", phase="plan")
+    store.runs[run.id] = run
+
+    ctx = ResearchHarness(ctx_factory=_factory).run(run.id)
+    assert ctx is not None
+    assert calls == {"critic": 2, "writer": 2}  # one corrective rewrite
+    assert ctx.revisions == 1
+    assert store.runs[run.id].status == "awaiting_review"
+    assert store.runs[run.id].postId
+
+
+def test_gather_falls_back_to_raw_rq_when_refinement_fails(store, monkeypatch):
+    # Query-refinement LLM failure must degrade to the raw RQ text and still
+    # search the connectors — never fail the gather phase.
+    import app.research.llm as llm
+
+    orig = llm.structured
+
+    def wrapper(schema, model, system, user, **kw):
+        if kw.get("actor") == "retriever":
+            raise llm.ResearchLLMError("refinement broke")
+        return orig(schema, model, system, user, **kw)
+    monkeypatch.setattr(llm, "structured", wrapper)
+    # gather catches llm.ResearchLLMError via the module attribute; keep it intact
+    queries_seen = []
+
+    class _RecordingConn(_FakeConn):
+        def search(self, q):
+            queries_seen.append(q.query)
+            return super().search(q)
+
+    def factory(run):
+        return RunContext(
+            run=run, budget=Budget(run.budget),
+            registry={
+                "kokkai": _RecordingConn("kokkai", [_kokkai_hit()]),
+                "academic": _RecordingConn("academic", [_academic_hit()]),
+                "news": _RecordingConn("news", [_news_hit()]),
+            },
+            fetcher=_FakeFetcher())
+
+    run = ResearchRun(
+        id="rr_fallback", trigger="manual", theme="天皇の戦争への責任",
+        budget=BudgetState(usdCap=10.0), languages=["ja"],
+        canonicalLanguage="ja", status="running", phase="plan")
+    store.runs[run.id] = run
+
+    ResearchHarness(ctx_factory=factory).run(run.id)
+    # raw RQ texts were used as queries (fixture RQs from the planner fake)
+    assert "戦前の天皇の法的権限" in queries_seen
+    assert store.runs[run.id].status == "awaiting_review"
+    assert store.evidence[run.id]  # evidence still produced
 
 
 def test_golden_citecheck_flags_hallucinated_citation(store):

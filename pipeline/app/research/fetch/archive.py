@@ -2,7 +2,7 @@
 
 Every fetched source is stored to research/{runId}/snapshots/{urlHash}.{ext} with
 its sha256 recorded on the EvidenceRecord. That sha256 is the fixed reference
-point for the R8 citecheck: a quoted string must exist in these exact bytes, so a
+point for the review-phase citecheck: a quoted string must exist in these exact bytes, so a
 hallucinated citation cannot survive (design §8.1 引用妥当性 ≥98%).
 """
 

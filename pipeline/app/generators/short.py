@@ -71,6 +71,7 @@ def generate_for_category(category: Category) -> Post | None:
     user_prompt = prompts.apply_keywords(
         user_prompt, template.userPromptTemplate, template.focusKeywords
     )
+    user_prompt = prompts.apply_custom_instructions(user_prompt, template.customInstructions)
     model = template.modelOverride or settings.openai_model_daily
     usage = TokenUsage()
     result = generate_json(model, template.systemPrompt, user_prompt, usage)

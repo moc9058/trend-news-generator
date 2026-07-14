@@ -11,17 +11,16 @@ from app.generators.openai_client import cost_usd
 from app.research.schemas import BudgetState, Phase
 
 # Minimum USD that must remain to ENTER a phase (rough per-phase floor from the
-# ~$10 budget breakdown in §4.1). Phases not listed have no floor.
+# ~$10 budget breakdown in §4.1). Phases not listed have no floor. Floors are
+# the sums of the pre-consolidation phases each one absorbed (gather = retrieve
+# 0.30 + triage 0.40, verify = verify 0.50 + gap 0.10, write = write 0.50 +
+# localize 0.50, review = critic 0.30 + handoff 0.00).
 PHASE_MIN_USD: dict[Phase, float] = {
-    Phase.R2: 0.30,
-    Phase.R3: 0.40,
-    Phase.R4: 0.50,
-    Phase.R5: 0.50,
-    Phase.R6: 0.10,
-    Phase.R7: 0.50,
-    Phase.R7L: 0.50,
-    Phase.R8: 0.30,
-    Phase.R9: 0.00,
+    Phase.gather: 0.70,
+    Phase.extract: 0.50,
+    Phase.verify: 0.60,
+    Phase.write: 1.00,
+    Phase.review: 0.30,
 }
 
 # Deep Research auto-skips below this remaining budget (§4.3).

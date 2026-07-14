@@ -16,11 +16,11 @@ from app.research.schemas import (
     TERMINAL_STATUSES,
 )
 
-# Linear phase order (§4.1). Branches (R6→R2 loop, R8→R7 revise) are decided by
-# gap_decision()/critic_decision() below, not by linear_next().
+# Linear phase order (§4.1). Branches (verify→gather loop, review→write revise)
+# are decided by gap_decision()/critic_decision() below, not by linear_next().
 PHASE_ORDER: list[Phase] = [
-    Phase.R0, Phase.R1, Phase.R2, Phase.R3, Phase.R4,
-    Phase.R5, Phase.R6, Phase.R7, Phase.R7L, Phase.R8, Phase.R9,
+    Phase.plan, Phase.gather, Phase.extract,
+    Phase.verify, Phase.write, Phase.review,
 ]
 
 # A run whose heartbeat is older than this is considered stale and re-claimable
@@ -29,7 +29,7 @@ LEASE_TTL_MIN = 30
 
 
 def linear_next(phase: Phase) -> Optional[Phase]:
-    """The next phase in the straight-line order, or None after R9 (handoff)."""
+    """The next phase in the straight-line order, or None after review."""
     i = PHASE_ORDER.index(phase)
     return PHASE_ORDER[i + 1] if i + 1 < len(PHASE_ORDER) else None
 
@@ -38,13 +38,13 @@ def gap_decision(
     coverage: CoverageReport,
     loops: int,
     max_loops: int,
-    can_afford_retrieve: bool,
+    can_afford_gather: bool,
 ) -> str:
-    """R6 branch: 'loop' back to R2 only if some RQ is unresolved AND the loop
-    ceiling is not reached AND the budget still allows another retrieve leg.
-    Otherwise 'finalize' → R7 (unresolved RQs are surfaced as open questions,
+    """verify branch: 'loop' back to gather only if some RQ is unresolved AND the
+    loop ceiling is not reached AND the budget still allows another gather leg.
+    Otherwise 'finalize' → write (unresolved RQs are surfaced as open questions,
     never silently dropped; §6.4)."""
-    if loops >= max_loops or not can_afford_retrieve:
+    if loops >= max_loops or not can_afford_gather:
         return "finalize"
     if any(not rq.resolved for rq in coverage.rqCoverage):
         return "loop"
@@ -52,8 +52,8 @@ def gap_decision(
 
 
 def critic_decision(audit: AuditReport, revisions: int, max_revisions: int = 1) -> str:
-    """R8 branch: 'revise' back to R7 at most `max_revisions` times when the
-    audit fails; otherwise 'proceed' to R9 (handoff)."""
+    """review branch: 'revise' back to write at most `max_revisions` times when
+    the audit fails; otherwise 'proceed' to handoff."""
     if not audit.passed and revisions < max_revisions:
         return "revise"
     return "proceed"

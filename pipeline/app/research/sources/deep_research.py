@@ -1,8 +1,8 @@
 """Deep Research connector (design §4.3) — OpenAI Responses API, background mode.
 
-Flag-gated (config.deep_research_provider). It is a single R2 ASSIST leg: its
+Flag-gated (config.deep_research_provider). It is a single gather-phase ASSIST leg: its
 returned citations become SourceHits (deepResearchAssisted=true) that flow through
-the normal R3–R5 verification pipeline — its prose output is NOT used directly, so
+the normal triage→verify pipeline — its prose output is NOT used directly, so
 an unverifiable claim from it never reaches the report. Auto-skips when the
 provider is off, it has already run once, or the budget is tight (< $3, §4.3).
 The Gemini provider can be slotted in behind the same interface.

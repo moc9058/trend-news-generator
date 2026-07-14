@@ -27,18 +27,19 @@ class RunContext:
     budget: Budget
     registry: dict = field(default_factory=dict)   # connector name -> connector
     fetcher: object = None
-    # R2 → R3
+    # gather (retrieval leg → triage leg)
     hit_index: dict[str, SourceHit] = field(default_factory=dict)   # urlHash -> hit
     hit_rqs: dict[str, set] = field(default_factory=dict)           # urlHash -> {rqId}
-    # R3 → R4
+    # gather → extract
     selected: list[SourceHit] = field(default_factory=list)
-    # R5 → R6/R7
+    # verify → write (coverage drives the verify→gather loop)
     claims: list[Claim] = field(default_factory=list)
     coverage: Optional[CoverageReport] = None
-    # R7 → R7L → R8 → R9
+    # write → review
     draft: Optional[ReportDraft] = None
     localized: dict[str, LocalizedReport] = field(default_factory=dict)
     audit: Optional[AuditReport] = None
+    review_decision: str = ""  # "revise" | "proceed", set by review.run
     revisions: int = 0
     postId: str = ""
 

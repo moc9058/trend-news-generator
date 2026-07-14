@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.models import ChannelStatus, PostStatus
-from app.publishers.base import publish_post
+from app.publishers.base import delete_post_channels, publish_post
 from app.repo import posts
 from app.repo import research as research_repo
 from app.research.schemas import BudgetState, ResearchRun, ResearchRunStatus
@@ -39,6 +39,11 @@ class PublishRequest(BaseModel):
 
 class RetryRequest(BaseModel):
     channel: str
+
+
+class DeleteRequest(BaseModel):
+    channels: list[str] = []  # empty = every channel with a remote artifact
+    deletePost: bool = False  # also remove the Firestore doc when nothing stays published
 
 
 class ResearchRunRequest(BaseModel):
@@ -111,6 +116,16 @@ def retry_channel(post_id: str, req: RetryRequest) -> dict:
         "channel": result.channels[req.channel].status.value,
         "error": result.channels[req.channel].error,
     }
+
+
+@app.post("/api/posts/{post_id}/delete")
+def delete_post(post_id: str, req: DeleteRequest) -> dict:
+    """Delete a post's remote artifacts (X / Threads / Notion) — optionally a
+    subset of channels — and, with deletePost, the Firestore document itself."""
+    try:
+        return delete_post_channels(post_id, req.channels or None, req.deletePost)
+    except ValueError:
+        raise HTTPException(404, "post not found")
 
 
 def _cloud_run_job_name(api_name: str) -> str:

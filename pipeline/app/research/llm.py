@@ -25,7 +25,7 @@ class ResearchLLMError(RuntimeError):
 
 def structured(schema: Type[T], model: str, system: str, user: str, *,
                budget: Budget, run_id: str, phase: str, actor: str,
-               prompt_version: str = "") -> T:
+               prompt_version: str = "", extra_detail: dict | None = None) -> T:
     usage = TokenUsage()
     last_err = ""
     for attempt in range(2):  # original + one corrective retry (§7.1)
@@ -40,11 +40,12 @@ def structured(schema: Type[T], model: str, system: str, user: str, *,
             continue
         budget.charge_usd(usage.costUsd)
         events.llm_call(run_id, phase, actor, model, usage.inputTokens,
-                        usage.outputTokens, usage.costUsd, prompt_version)
+                        usage.outputTokens, usage.costUsd, prompt_version,
+                        extra_detail=extra_detail)
         return obj
 
     budget.charge_usd(usage.costUsd)
     events.llm_call(run_id, phase, actor, model, usage.inputTokens,
                     usage.outputTokens, usage.costUsd, prompt_version,
-                    ok=False, error=last_err)
+                    ok=False, error=last_err, extra_detail=extra_detail)
     raise ResearchLLMError(f"{actor} output failed schema validation: {last_err}")

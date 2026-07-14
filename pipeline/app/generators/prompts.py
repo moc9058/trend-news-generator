@@ -120,6 +120,27 @@ def keyword_focus_line(keywords: list[str]) -> str:
     )
 
 
+def custom_instructions_block(instructions: str) -> str:
+    """Standing owner requests, verbatim. They may arrive in Korean, Japanese or
+    English (or a mix) — the model must honour them regardless of language, and
+    they must never override the output-language rules set by channelConfigs."""
+    text = (instructions or "").strip()
+    if not text:
+        return ""
+    return (
+        "\n\nOWNER INSTRUCTIONS — the site owner set the following standing requests "
+        "for this category. They may be written in Korean, Japanese, or English; "
+        "follow them regardless of the language they are written in. They refine "
+        "topic selection, emphasis, and style, but they NEVER change the output "
+        "language(s) requested above.\n"
+        f"<owner_instructions>\n{text}\n</owner_instructions>"
+    )
+
+
+def apply_custom_instructions(user_prompt: str, instructions: str) -> str:
+    return user_prompt + custom_instructions_block(instructions)
+
+
 def apply_keywords(user_prompt: str, template_text: str, keywords: list[str]) -> str:
     """Append the keyword-focus line unless the template already places {keywords}
     itself (avoids double emphasis)."""

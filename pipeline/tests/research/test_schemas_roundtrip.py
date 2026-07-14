@@ -1,9 +1,11 @@
 """P1: intermediate schemas round-trip the design's golden JSON (§4.5 / §4.7)."""
 
 from app.research.schemas import (
+    LEGACY_PHASE_MAP,
     Claim,
     CoverageReport,
     EvidenceRecord,
+    Phase,
     ResearchRequest,
     ResearchRun,
     SourceHit,
@@ -84,12 +86,27 @@ def _roundtrips(model_cls, data, key_exclude=None):
 
 def test_research_run_roundtrip():
     obj, rebuilt = _roundtrips(ResearchRun, RESEARCH_RUN)
-    assert obj.status == "running" and obj.phase == "R2"
+    # the fixture's legacy phase "R2" is bridged to "gather" by the compat shim
+    assert obj.status == "running" and obj.phase == "gather"
     assert obj.budget.usdCap == 10.0 and obj.budget.usdSpent == 0.42
     assert obj.plan.themeClass == "politics_history" and obj.plan.contested is True
     assert obj.plan.rqs[0].id == "rq1" and obj.plan.rqs[0].strategies == ["gov_docs", "books", "academic"]
     assert obj.postId is None
     assert rebuilt.plan.rqs[0].q == obj.plan.rqs[0].q  # survives dump→reload
+
+
+def test_research_run_current_phase_roundtrips_unchanged():
+    obj, rebuilt = _roundtrips(ResearchRun, {**RESEARCH_RUN, "phase": "verify"})
+    assert obj.phase == "verify" and rebuilt.phase == "verify"
+
+
+def test_legacy_phase_map_covers_all_old_phases_with_valid_targets():
+    assert set(LEGACY_PHASE_MAP) == {"R0", "R1", "R2", "R3", "R4", "R5",
+                                     "R6", "R7", "R7L", "R8", "R9"}
+    for target in LEGACY_PHASE_MAP.values():
+        assert Phase(target)  # every mapped value is a valid current Phase
+    for legacy, target in LEGACY_PHASE_MAP.items():
+        assert ResearchRun(id="x", phase=legacy).phase == target
 
 
 def test_source_hit_roundtrip():

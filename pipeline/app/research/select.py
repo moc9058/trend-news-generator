@@ -1,6 +1,6 @@
-"""Auto theme selection for scheduled report runs (design §4.1 R1).
+"""Auto theme selection for scheduled report runs (design §4.1 plan phase).
 
-When a run has no theme (the monthly scheduled trigger), R1 calls this first: it
+When a run has no theme (the monthly scheduled trigger), plan calls this first: it
 gathers recent items across categories and asks the fast model to propose one
 deep-dive theme. Falls back to a category-based theme when there are no items.
 """
@@ -36,7 +36,7 @@ def select_theme(ctx: RunContext) -> tuple[str, str]:
     pick: ThemePick = llm.structured(
         ThemePick, get_settings().research_fast_model, SELECT_SYSTEM,
         SELECT_USER.format(items="\n".join(lines[:60])),
-        budget=ctx.budget, run_id=ctx.run.id, phase=Phase.R1.value,
+        budget=ctx.budget, run_id=ctx.run.id, phase=Phase.plan.value,
         actor="selector", prompt_version=PROMPT_VERSION)
     theme = pick.theme or lines[0].split("] ", 1)[-1]
     category = pick.categoryId or (cats[0].slug if cats else "")

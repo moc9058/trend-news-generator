@@ -88,6 +88,71 @@ def _publish_threads(post: Post, post_id: str, notion_url: str) -> None:
     state.status = ChannelStatus.published
 
 
+def delete_post_channels(
+    post_id: str, channels: list[str] | None = None, delete_doc: bool = False
+) -> dict:
+    """Remove the remote artifacts of a post's published channels (X tweet,
+    Threads media, Notion page(s) incl. report localizations), mark them
+    `deleted`, and optionally delete the Firestore doc once nothing published
+    remains. X limitation: only the first tweet of a thread is stored, so reply
+    tweets of a split post survive.
+    Returns {"channels": {name: "deleted"|error}, "docDeleted": bool}."""
+    post = posts.get(post_id)
+    if post is None:
+        raise ValueError(f"post {post_id} not found")
+
+    targets = channels or [
+        name for name, s in post.channels.items()
+        if s.externalId or s.pageId or s.status == ChannelStatus.published
+    ]
+    results: dict[str, str] = {}
+    for name in targets:
+        state = post.channels.get(name)
+        if state is None:
+            results[name] = "unknown channel"
+            continue
+        if not (state.externalId or state.pageId):
+            # nothing remote to remove — just make sure it can't publish later
+            state.enabled = False
+            if state.status == ChannelStatus.pending:
+                state.status = ChannelStatus.skipped
+            posts.update_channel(post_id, name, state)
+            results[name] = "deleted"
+            continue
+        try:
+            if name == "x":
+                x.delete(state.externalId)
+            elif name == "threads":
+                threads.delete(state.externalId)
+            else:
+                notion.archive_page(state.pageId or state.externalId)
+                for loc in post.localizations.values():
+                    if loc.notionPageId and loc.notionPageId != state.pageId:
+                        notion.archive_page(loc.notionPageId)
+            state.status = ChannelStatus.deleted
+            state.enabled = False
+            state.error = ""
+            posts.update_channel(post_id, name, state)
+            results[name] = "deleted"
+        except Exception as exc:  # noqa: BLE001 — report per channel, keep going
+            state.error = str(exc)[:1000]
+            posts.update_channel(post_id, name, state)
+            results[name] = f"error: {exc}"
+            log.error("channel delete failed", extra={"fields": {
+                "post": post_id, "channel": name, "error": str(exc)}})
+
+    doc_deleted = False
+    still_published = any(
+        s.status == ChannelStatus.published for s in post.channels.values()
+    )
+    if delete_doc and not still_published and all(
+        not v.startswith("error") for v in results.values()
+    ):
+        posts.delete(post_id)
+        doc_deleted = True
+    return {"channels": results, "docDeleted": doc_deleted}
+
+
 def publish_post(post_id: str, only_channel: str = "") -> Post:
     """Publish all pending enabled channels of a post (or a single channel on
     retry). Returns the refreshed post."""

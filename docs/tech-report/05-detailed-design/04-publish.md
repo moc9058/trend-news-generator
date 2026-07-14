@@ -1,12 +1,13 @@
 # 詳細設計 04: 投稿(publish)— オーケストレーションとチャネル別クライアント
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(投稿削除 `delete_post_channels()` 反映)
 
 ## 1. この文書で分かること
 
 - 生成済みの投稿(post)が **Notion → X → Threads の固定順** で公開されるまでの全ロジックと、順序が固定である理由。
 - 途中でクラッシュしても二重投稿にならない仕組み(チャネル毎のスキップ判定・`externalId`・Threads の `containerId` 永続化)。
 - X の OAuth 1.0a 署名と加重文字数、Threads の 2 段階公開、Notion の Markdown→ブロック変換という、3 つの外部 API クライアントの実装詳細。
+- 公開の逆操作 = **投稿削除**(`delete_post_channels()`)。リモート成果物(ツイート・Threads メディア・Notion ページ)を削除してチャネルを `deleted` にし、必要なら Firestore ドキュメントも消す(§5 末尾)。
 
 本章は README フロー③のうち「実際に投稿する側」を扱う。管理画面からの HTTP 入口(承認・リトライのエンドポイント)は [05-pipeline-api.md](05-pipeline-api.md)、投稿の本文・ティーザー(本文へ誘導する短い紹介文)を作る側は [03-generate.md](03-generate.md) を参照。
 
@@ -107,6 +108,14 @@ flowchart TD
 - 外部アクセス: GCS。
 - 要点: MIME は拡張子からの単純推定(`jpg` → `image/jpeg`、それ以外は `image/{ext}`)。失敗しても例外にせず画像なしで続行。
 
+#### `delete_post_channels(post_id, channels=None, delete_doc=False) -> dict`
+
+- 役割: 公開の逆操作。指定チャネル(省略時は `externalId` / `pageId` を持つ、または `published` の全チャネル)のリモート成果物を削除し、チャネル状態を `deleted` + `enabled=false` にする。`delete_doc=True` なら、`published` のチャネルが残っておらず全チャネルの削除がエラーなしのとき Firestore の post ドキュメント自体も削除する。
+- 入出力: post ID・チャネル名リスト・`delete_doc` フラグ → `{"channels": {チャネル名: "deleted" | "error: ..."}, "docDeleted": bool}`。post が無ければ `ValueError`。
+- 呼び出し元 → 先: pipeline-api の `POST /api/posts/{id}/delete`([05-pipeline-api.md](05-pipeline-api.md))→ `x.delete()` / `threads.delete()` / `notion.archive_page()`、`posts.update_channel()` / `posts.delete()`。
+- 外部アクセス: X API(`DELETE /2/tweets/{id}`、OAuth 1.0a 署名)、Threads Graph API(`DELETE /{media-id}`)、Notion API(`PATCH /pages/{id}` で `archived: true` = ソフト削除。**report の `localizations` にある言語別 Notion ページもまとめてアーカイブする**)、Firestore。
+- 要点: (1) リモート成果物の無いチャネルは API を呼ばず `enabled=false`(`pending` なら `skipped`)にするだけ。(2) チャネル単位の try/except で失敗を隔離し、失敗は `error` に保存して残りを続行(publish と同じ方針)。(3) X 側は 404(すでに消えている)を成功扱いにする冪等設計。(4) **既知の制限**: X のスレッド投稿は先頭ツイート ID しか保存していないため、返信側のツイートは削除されず残る。
+
 ### renderer.py — 本文整形と文字数ルール
 
 #### `x_weighted_length(text) -> int`
@@ -170,6 +179,11 @@ flowchart TD
 - 呼び出し元: `base._publish_x()`。
 - 要点: `thread_parts` があれば `text` は使わずパーツ列を投稿する。画像は先頭ツイートにのみ添付し、2 件目以降は `in_reply_to_tweet_id` で直前のツイートにぶら下げる。
 
+#### `delete(tweet_id)` / `delete_tweet(tweet_id, client)`
+
+- 役割: ツイート削除(`DELETE https://api.x.com/2/tweets/{id}`、OAuth 1.0a 署名付き)。`delete_post_channels()` から呼ばれる。
+- 要点: 404 は「すでにリモートで消えている」として成功扱い(冪等)。保存されているのは先頭ツイート ID だけなので、スレッドの返信ツイートは対象外。
+
 ### threads.py — Threads Graph API クライアント
 
 #### `create_container(text, image_url="") -> str`
@@ -192,6 +206,10 @@ flowchart TD
 - 呼び出し元 → 先: `base._publish_threads()` → `POST https://graph.threads.net/v1.0/{user_id}/threads_publish`(`creation_id` に container ID)。
 - 要点: `@api_retry` 付き。同じファイルにある `refresh_long_lived_token()` は投稿フローではなく週次のトークン更新ジョブ用。
 
+#### `delete(media_id)`
+
+- 役割: 公開済み Threads メディアの削除(`DELETE https://graph.threads.net/v1.0/{media_id}`)。`delete_post_channels()` から呼ばれる。
+
 ### notion.py — Notion クライアント
 
 #### `markdown_to_blocks(markdown) -> list[dict]`
@@ -212,6 +230,10 @@ flowchart TD
 - 呼び出し元 → 先: `base._publish_notion()` → Notion API `POST /v1/pages`、`PATCH /v1/blocks/{page_id}/children`。
 - 外部アクセス: Notion API、Firestore(`settings/notion` の `databaseId`。未設定なら `RuntimeError`)。
 - 要点: プロパティは Name(タイトル、200 文字に切り詰め)/ Category / Format / Date(移行で "Cadence" セレクトを "Format" にリネーム。§03-data-model / runbook)。本文ブロックは 100 個ずつ分割投入し、追記の合間に 0.35 秒のスロットル(呼び出し間隔をわざと空けてレート制限を守ること)を入れる(§6-D)。API バージョンは `2022-06-28` 固定。
+
+#### `archive_page(page_id)`
+
+- 役割: ページのアーカイブ(`PATCH /pages/{page_id}` に `{"archived": true}`)。Notion API に物理削除は無く、これが公式の削除操作。`delete_post_channels()` から呼ばれる(report では `localizations` の言語別ページも順に呼ぶ)。
 
 ## 6. 難所解説
 
@@ -393,6 +415,7 @@ Notion API には「ページ作成時の `children` もブロック追記も 1 
 | `pipeline/tests/test_oauth1.py` | `oauth1_header()` を **X 公式ドキュメント「Creating a signature」の既知テストベクタ**(実在の例示認証情報 + 固定 nonce/timestamp → 期待署名 `hCtSmYh+iHYCEqBWrE7C7hYmtUk=`)と照合。ヘッダの形式、「JSON ボディは署名に影響せずクエリパラメータは影響する」という仕様も固定 |
 | `pipeline/tests/test_renderer.py` | 加重カウント(ASCII=1・CJK=2・URL=23)、280/500 の境界値(`a`×280 可・×281 不可、`日`×140 可・×141 不可)、スレッド分割の連番 ` (i/n)` と各パーツの上限遵守、`strip_urls()`、`append_url()` が本文を削ってでも上限内に収めること |
 | `pipeline/tests/test_notion_blocks.py` | Markdown→ブロック変換の対応表(見出し 3 種・リスト 2 種・引用・区切り線・言語付きコードフェンス)、インライン装飾(太字・リンク)、2000 文字分割(4500 文字 → `[2000, 2000, 500]`)、空行スキップ |
+| `pipeline/tests/test_delete_post.py` | `delete_post_channels()` と `/api/posts/{id}/delete` の検証。全チャネル削除+ doc 削除、チャネル部分削除では doc が残ること、report の言語別 Notion ページのアーカイブ、リモート失敗時のエラー報告と doc 削除ブロック、成果物なし `pending` チャネルの無効化、エンドポイントの 404/200 |
 
 4 本とも外部 API へは一切出ない(orchestration は monkeypatch、oauth1/renderer/notion_blocks は純関数)。HTTP 層を触る変更では respx によるモックを追加すること(方針は [01-pipeline-foundation.md](01-pipeline-foundation.md))。
 

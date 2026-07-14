@@ -1,8 +1,9 @@
 """Intermediate schemas for the Research Agent (report format).
 
-Every phase (R0–R9) consumes and produces one of these pydantic-validated
-objects; a phase's LLM never sees the previous phase's raw text — only the
-validated JSON — which is what breaks the hallucination chain (design §3.2).
+Every phase (plan→gather→extract→verify→write→review) consumes and produces one
+of these pydantic-validated objects; a phase's LLM never sees the previous
+phase's raw text — only the validated JSON — which is what breaks the
+hallucination chain (design §3.2).
 
 Contract flow (design §4.8):
   ResearchRequest → ResearchPlan → StrategyQuery → SourceHit → EvidenceRecord
@@ -16,7 +17,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # --------------------------------------------------------------------------- #
@@ -46,17 +47,25 @@ TERMINAL_STATUSES = {
 
 
 class Phase(str, Enum):
-    R0 = "R0"    # intake
-    R1 = "R1"    # plan
-    R2 = "R2"    # retrieve
-    R3 = "R3"    # triage
-    R4 = "R4"    # extract
-    R5 = "R5"    # verify
-    R6 = "R6"    # gap
-    R7 = "R7"    # write (canonical)
-    R7L = "R7L"  # localize
-    R8 = "R8"    # critic
-    R9 = "R9"    # handoff
+    plan = "plan"        # intake + theme auto-select + RQ decomposition
+    gather = "gather"    # query refinement + connector search + triage
+    extract = "extract"  # fetch / snapshot / evidence extraction
+    verify = "verify"    # claim verification + coverage (loop decision)
+    write = "write"      # canonical ja draft + ko/en localization
+    review = "review"    # critic audit + handoff
+
+
+# Pre-consolidation phase names (R0–R9+R7L) → current phases. Single source of
+# truth; the admin flow view mirrors this map so old runs render on the same
+# 6-node graph. Covers stored runs claimed/resumed across the deploy boundary.
+LEGACY_PHASE_MAP: dict[str, str] = {
+    "R0": Phase.plan.value, "R1": Phase.plan.value,
+    "R2": Phase.gather.value, "R3": Phase.gather.value,
+    "R4": Phase.extract.value,
+    "R5": Phase.verify.value, "R6": Phase.verify.value,
+    "R7": Phase.write.value, "R7L": Phase.write.value,
+    "R8": Phase.review.value, "R9": Phase.review.value,
+}
 
 
 class Tier(str, Enum):
@@ -162,7 +171,7 @@ class SourceHit(BaseModel):
     connector: str = ""
     rawScore: Optional[float] = None
     citationCount: Optional[int] = None
-    contentText: str = ""  # kokkai etc. return full text → skip R4 fetch
+    contentText: str = ""  # kokkai etc. return full text → skip the extract fetch
     deepResearchAssisted: bool = False
 
 
@@ -331,9 +340,9 @@ class ResearchRun(BaseModel):
     languages: list[str] = ["ja", "ko", "en"]
     canonicalLanguage: str = "ja"
     status: str = ResearchRunStatus.queued.value
-    phase: str = Phase.R0.value
+    phase: str = Phase.plan.value
     loops: int = 0
-    planApproval: bool = False   # if true, pause after R1 for admin approval
+    planApproval: bool = False   # if true, pause after the plan phase for admin approval
     planApproved: bool = False   # set by the approve-plan endpoint
     claimedBy: str = ""
     claimedAt: Optional[datetime] = None
@@ -344,6 +353,19 @@ class ResearchRun(BaseModel):
     error: str = ""
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_legacy_phase(cls, data):
+        """Bridge stored runs from before the R0–R9 → 6-phase consolidation.
+        A run claimed/resumed across the deploy boundary (in-flight, stale lease,
+        awaiting_plan_approval stored as phase="R2") would otherwise fail the
+        Phase(...) conversion in the harness."""
+        if isinstance(data, dict):
+            phase = data.get("phase")
+            if isinstance(phase, str) and phase in LEGACY_PHASE_MAP:
+                data = {**data, "phase": LEGACY_PHASE_MAP[phase]}
+        return data
 
 
 class AuditEvent(BaseModel):

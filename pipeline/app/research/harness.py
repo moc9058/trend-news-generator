@@ -13,19 +13,15 @@ from app.repo import research as repo
 from app.research import events, state
 from app.research.budget import Budget
 from app.research.context import RunContext
-from app.research.phases import (
-    critic, extract, gaps, handoff, localize, plan, retrieve, triage, verify, write,
-)
+from app.research.phases import extract, gather, plan, review, verify, write
 from app.research.schemas import Phase, ResearchRunStatus
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
 
 PHASE_FN: dict[Phase, Callable[[RunContext], None]] = {
-    Phase.R1: plan.run, Phase.R2: retrieve.run, Phase.R3: triage.run,
-    Phase.R4: extract.run, Phase.R5: verify.run, Phase.R6: gaps.run,
-    Phase.R7: write.run, Phase.R7L: localize.run, Phase.R8: critic.run,
-    Phase.R9: handoff.run,
+    Phase.plan: plan.run, Phase.gather: gather.run, Phase.extract: extract.run,
+    Phase.verify: verify.run, Phase.write: write.run, Phase.review: review.run,
 }
 
 
@@ -62,12 +58,12 @@ class ResearchHarness:
                                         "phase": phase.value})
             repo.heartbeat(run_id)
 
-            # optional plan-approval gate after R1 (design §4.1): pause for admin
-            # sign-off, resuming at R2 once approve-plan re-queues the run.
-            if phase == Phase.R1 and run.planApproval and not run.planApproved:
-                run.phase = Phase.R2.value
+            # optional plan-approval gate after plan (design §4.1): pause for admin
+            # sign-off, resuming at gather once approve-plan re-queues the run.
+            if phase == Phase.plan and run.planApproval and not run.planApproved:
+                run.phase = Phase.gather.value
                 repo.set_status(run_id, ResearchRunStatus.awaiting_plan_approval.value,
-                                phase=Phase.R2.value)
+                                phase=Phase.gather.value)
                 log.info("research run awaiting plan approval", extra={"fields": {"run": run_id}})
                 return ctx
 
@@ -81,18 +77,19 @@ class ResearchHarness:
 
     # -- transition logic (deterministic) -------------------------------------
     def _next_phase(self, phase: Phase, ctx: RunContext) -> Optional[Phase]:
-        if phase == Phase.R6:
+        if phase == Phase.verify:
             if ctx.coverage and ctx.coverage.decision == "loop":
                 ctx.run.loops += 1
                 repo.update_fields(ctx.run.id, {"loops": ctx.run.loops})
-                return Phase.R2  # re-retrieve only the unresolved RQs (§4.1)
-            return Phase.R7
-        if phase == Phase.R8:
-            decision = state.critic_decision(ctx.audit, ctx.revisions) if ctx.audit else "proceed"
-            if decision == "revise":
+                return Phase.gather  # re-retrieve only the unresolved RQs (§4.1)
+            return Phase.write
+        if phase == Phase.review:
+            # review.run stored the critic decision and already ran handoff on
+            # "proceed" — the harness only honours the revise loop-back here.
+            if ctx.review_decision == "revise":
                 ctx.revisions += 1
-                return Phase.R7  # one corrective rewrite (§4.1)
-            return Phase.R9
+                return Phase.write  # one corrective rewrite (§4.1)
+            return None
         return state.linear_next(phase)
 
     # -- helpers --------------------------------------------------------------

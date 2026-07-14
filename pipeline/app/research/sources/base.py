@@ -1,8 +1,8 @@
 """Source-connector contract, shared HTTP base, and registry (design §4.3, §7.1).
 
 A connector answers a StrategyQuery with METADATA-ONLY SourceHits — body fetch is
-centralised in R4's fetcher (`research/fetch/fetcher.py`). The one exception is
-kokkai, whose API returns full speech text, so it attaches `contentText` and R4
+centralised in the extract phase's fetcher (`research/fetch/fetcher.py`). The one exception is
+kokkai, whose API returns full speech text, so it attaches `contentText` and extract
 skips the fetch.
 
 Resilience (design §7.1): every outbound GET retries 3× with exponential backoff

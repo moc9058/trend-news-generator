@@ -1,4 +1,4 @@
-"""R1 plan — theme → ResearchPlan (RQs + per-RQ source strategies), design §4.1/§4.2.
+"""plan — intake + theme → ResearchPlan (RQs + per-RQ source strategies), design §4.1/§4.2.
 
 The Source Strategy Matrix maps each theme class to an ordered connector priority
 list; the planner's per-RQ strategies are validated/filled against it so a bad LLM
@@ -30,9 +30,9 @@ def run(ctx: RunContext) -> None:
     qblock = ("Existing questions to incorporate:\n" + "\n".join(run.questions)
               if run.questions else "")
     plan: ResearchPlan = llm.structured(
-        ResearchPlan, get_settings().research_model, PLAN_SYSTEM,
+        ResearchPlan, get_settings().research_planner_model, PLAN_SYSTEM,
         PLAN_USER.format(theme=run.theme, questions_block=qblock),
-        budget=ctx.budget, run_id=run.id, phase=Phase.R1.value,
+        budget=ctx.budget, run_id=run.id, phase=Phase.plan.value,
         actor="planner", prompt_version=PROMPT_VERSION)
 
     matrix = STRATEGY_MATRIX.get(plan.themeClass, STRATEGY_MATRIX["society_culture"])

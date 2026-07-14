@@ -25,13 +25,14 @@ class Settings(BaseSettings):
     # Meta app credentials, only needed by the token refresh job.
     threads_app_secret: str = ""
 
-    openai_model_daily: str = "gpt-5.4-mini"  # short generation & longform stage-1 (cheap model)
-    openai_model_longform: str = "gpt-5.5"
+    openai_model_daily: str = "gpt-5.6-luna"     # short generation & longform stage-1 (cheap model)
+    openai_model_longform: str = "gpt-5.6-terra"
     gemini_model: str = "gemini-3.5-flash"
 
     # --- Research Agent (report format) — see docs/tech-report/05-detailed-design/10 ---
-    research_model: str = "gpt-5.5"            # planner/verify/write/critic
-    research_fast_model: str = "gpt-5.4-mini"  # query-gen/triage/extract/gap
+    research_planner_model: str = "gpt-5.6-sol"    # planner/critic (highest-judgement roles)
+    research_model: str = "gpt-5.6-terra"          # verifier/writer/localizer
+    research_fast_model: str = "gpt-5.6-luna"      # query-refine/triage/extract/theme-select
     deep_research_provider: str = "openai"     # "openai" | "gemini" | "off"
     deep_research_model: str = "o4-mini-deep-research"
     research_budget_usd_default: float = 10.0  # hard cap per report

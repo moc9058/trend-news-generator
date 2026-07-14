@@ -2,7 +2,7 @@
 
 trafilatura strips HTML boilerplate to the article body; pypdf pulls text from
 PDFs. Output is capped so a single huge source can't blow the extraction prompt.
-Extracted content is UNTRUSTED input — the R4 prompt is hardened against injected
+Extracted content is UNTRUSTED input — the extract prompt is hardened against injected
 instructions and the extract phase holds no tool permissions (design §6.6).
 """
 

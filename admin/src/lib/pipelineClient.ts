@@ -39,6 +39,15 @@ export async function retryChannel(
   return { ok: resp.ok, detail: text };
 }
 
+export async function deletePost(
+  postId: string,
+  channels: string[],
+  deleteDoc: boolean,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/posts/${postId}/delete`, { channels, deletePost: deleteDoc });
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
 export async function runJob(name: string): Promise<{ ok: boolean; detail: string }> {
   const resp = await call(`/api/jobs/${name}/run`, {});
   const text = await resp.text();

@@ -35,7 +35,7 @@ def test_llm_structured_valid_first_try(monkeypatch):
     monkeypatch.setattr(llm_mod, "generate_json",
                         lambda m, s, u, usage: (calls.append(u), VALID)[1])
     out = structured(ResearchPlan, "m", "sys", "user",
-                     budget=_budget(), run_id="r", phase="R1", actor="planner")
+                     budget=_budget(), run_id="r", phase="plan", actor="planner")
     assert out.themeClass == "science_tech" and len(calls) == 1
 
 
@@ -48,7 +48,7 @@ def test_llm_structured_retries_once_then_succeeds(monkeypatch):
         return seq.pop(0)
     monkeypatch.setattr(llm_mod, "generate_json", fake)
     out = structured(ResearchPlan, "m", "sys", "user",
-                     budget=_budget(), run_id="r", phase="R1", actor="planner")
+                     budget=_budget(), run_id="r", phase="plan", actor="planner")
     assert out.themeClass == "science_tech"
     assert len(calls) == 2 and "failed validation" in calls[1]  # corrective retry
 
@@ -57,12 +57,12 @@ def test_llm_structured_raises_after_two_failures(monkeypatch):
     monkeypatch.setattr(llm_mod, "generate_json", lambda m, s, u, usage: INVALID)
     with pytest.raises(ResearchLLMError):
         structured(ResearchPlan, "m", "sys", "user",
-                   budget=_budget(), run_id="r", phase="R1", actor="planner")
+                   budget=_budget(), run_id="r", phase="plan", actor="planner")
 
 
 def test_harness_stops_as_budget_exhausted(monkeypatch):
-    # remaining budget 0 → cannot afford R2 (floor $0.30) → graceful stop.
-    run = ResearchRun(id="rrb", status="running", phase="R2",
+    # remaining budget 0 → cannot afford gather (floor $0.70) → graceful stop.
+    run = ResearchRun(id="rrb", status="running", phase="gather",
                       budget=BudgetState(usdCap=1.0, usdSpent=1.0))
     store = {"rrb": run}
     monkeypatch.setattr(rr_repo, "get", lambda rid: store.get(rid))

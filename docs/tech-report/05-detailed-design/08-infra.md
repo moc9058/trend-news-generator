@@ -208,7 +208,9 @@ flowchart LR
 
 ### 4.6 `deploy.sh` — 一括デプロイ補助スクリプト
 
-**目的**: 4.1〜4.5 の 5 本を毎回手で順番に叩く代わりに、`./deploy.sh` 1 コマンドで通せるようにする**薄いラッパー**。リポジトリ直下(`infra/` の外)に置かれており、内部で各スクリプトを`infra/`に`cd`してから順に呼び出すだけで、gcloud コマンド自体は一切増やしていません(ロジックの重複を避けるため)。
+**目的**: 4.1〜4.5 の 5 本を毎回手で順番に叩く代わりに、`./deploy.sh` 1 コマンドで通せるようにする**薄いラッパー**。リポジトリ直下(`infra/` の外)に置かれており、内部で各スクリプトを`infra/`に`cd`してから順に呼び出すだけで、gcloud コマンド自体はほぼ増やしていません(ロジックの重複を避けるため)。
+
+**デプロイ方針(2026-07 確定)**: あらゆる更新のデプロイは `./deploy.sh` で完結させます。通常のコード/設定/スキーマ更新は素の `./deploy.sh`、一回性のデータ移行が必要な更新は手順書化ではなく本スクリプトのフラグとして実装します(例: cadence→format リネームの `--migrate`)。なお 10-deploy-pipeline.sh は `--set-env-vars` で環境変数を毎デプロイ全置換するため、手動の env 上書きはデプロイで消え、モデル名等は常に config.py が正となります。
 
 **既定の動作**(オプション無しで実行): `00-bootstrap.sh` → `10-deploy-pipeline.sh` → `job-seed` 実行(`--wait`) → `11-deploy-admin.sh` → `20-schedulers.sh`、の順に実行します。
 
@@ -218,10 +220,15 @@ flowchart LR
 
 | フラグ | 意味 |
 |---|---|
+| `--migrate` | cadence→format のデータ移行ロールアウト(バックアップ→スケジューラ一時停止→デプロイ→dry-run→apply→孤児削除の安全順序)。一回性 |
+| `-y, --yes` | `--migrate` の破壊的ステップを無人承認 |
+| `--skip-backup` | (`--migrate` 時のみ)Firestore エクスポートを省略 |
 | `--with-secrets` | `01-secrets.sh` も実行する(初回セットアップで使う想定) |
 | `--skip-bootstrap` | `00-bootstrap.sh` を飛ばす(土台は既にある通常の再デプロイ向け) |
 | `--skip-seed` | `job-seed` の実行を飛ばす |
 | `--skip-schedulers` | `20-schedulers.sh` を飛ばす |
+
+**末尾の model config check(warn-only)**: どちらのチェーンでも最後に (a) pipeline-api・全ジョブの env に `*MODEL*` の上書きが残っていないか、(b) Firestore `promptTemplates.modelOverride` が config.py の現行モデル以外を固定していないか、を検査して警告します((b) は pipeline venv + ADC がある場合のみ。検出しても deploy は失敗しません)。モデル世代の入れ替え(例: GPT-5.6 移行)後の旧モデル残留はここで拾えます。
 
 **再実行**: 安全。呼び出す先の 5 本(01 を除く)がすべて冪等であることに支えられており、`deploy.sh` 自体は分岐と呼び出し順序を管理するだけで状態を持ちません。ただし `01-secrets.sh` を `--with-secrets` 付きで含めた場合は 4.2 と同じ注意(対話式・必須シークレット全再入力)がそのまま当てはまります。
 

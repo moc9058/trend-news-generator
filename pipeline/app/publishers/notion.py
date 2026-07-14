@@ -143,6 +143,18 @@ def _patch(client: httpx.Client, path: str, payload: dict) -> dict:
     return resp.json()
 
 
+def archive_page(page_id: str) -> None:
+    """Archive (soft-delete) a Notion page — the API's delete operation."""
+    with httpx.Client(timeout=30) as client:
+        try:
+            _patch(client, f"/pages/{page_id}", {"archived": True})
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:  # already gone remotely
+                return
+            raise
+    log.info("notion page archived", extra={"fields": {"pageId": page_id}})
+
+
 def publish(
     title: str,
     markdown_body: str,

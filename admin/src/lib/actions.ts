@@ -76,6 +76,7 @@ export async function savePromptTemplate(formData: FormData): Promise<void> {
       modelOverride: String(formData.get('modelOverride') ?? ''),
       focusKeywords: String(formData.get('focusKeywords') ?? '')
         .split(',').map((s) => s.trim()).filter(Boolean),
+      customInstructions: String(formData.get('customInstructions') ?? ''),
       enabled: formData.get('enabled') === 'on',
     },
     { merge: true },
@@ -83,14 +84,48 @@ export async function savePromptTemplate(formData: FormData): Promise<void> {
   revalidatePath('/', 'layout');
 }
 
-/** Bulk save for the dashboard's category x format automation grid. */
+/** Focus page: per category x format keywords + free-form owner requests.
+ * Merge-only so the (seeded) prompt bodies are never touched. */
+export async function saveFocus(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '');
+  if (!id) return;
+  await db().collection('promptTemplates').doc(id).set(
+    {
+      focusKeywords: String(formData.get('focusKeywords') ?? '')
+        .split(',').map((s) => s.trim()).filter(Boolean),
+      customInstructions: String(formData.get('customInstructions') ?? ''),
+    },
+    { merge: true },
+  );
+  revalidatePath('/', 'layout');
+}
+
+/** Per-channel default languages, used when the automation grid creates a
+ * channelConfigs doc that does not exist yet (X=ja / Threads=ko / Notion=en). */
+const DEFAULT_CHANNEL_LANGS: Record<string, string> = { x: 'ja', threads: 'ko', notion: 'en' };
+
+/** Bulk save for the dashboard's automation grid: per category x format the
+ * generation on/off (promptTemplates.enabled) and per visible channel the
+ * channelConfigs on/off. Languages of existing configs are preserved. */
 export async function saveAutomation(formData: FormData): Promise<void> {
   const ids = formData.getAll('ids').map(String);
+  const channels = formData.getAll('channels').map(String);
+  const existing = new Set(
+    (await db().collection('channelConfigs').select().get()).docs.map((d) => d.id),
+  );
   const batch = db().batch();
   for (const id of ids) {
     batch.update(db().collection('promptTemplates').doc(id), {
       enabled: formData.get(`enabled_${id}`) === 'on',
     });
+    const [categoryId, format] = [id.slice(0, id.lastIndexOf('_')), id.slice(id.lastIndexOf('_') + 1)];
+    for (const channel of channels) {
+      const cfgId = `${id}_${channel}`;
+      const enabled = formData.get(`ch_${id}_${channel}`) === 'on';
+      const doc: Record<string, unknown> = { categoryId, format, channel, enabled };
+      if (!existing.has(cfgId)) doc.language = DEFAULT_CHANNEL_LANGS[channel] ?? 'en';
+      batch.set(db().collection('channelConfigs').doc(cfgId), doc, { merge: true });
+    }
   }
   await batch.commit();
   revalidatePath('/', 'layout');
@@ -118,6 +153,11 @@ export async function saveAppSettings(formData: FormData): Promise<void> {
       shortRequireApproval: formData.get('shortRequireApproval') === 'on',
       xAllowUrlOnShort: formData.get('xAllowUrlOnShort') === 'on',
       attachImages: formData.get('attachImages') === 'on',
+      globalChannels: {
+        x: formData.get('channel_x') === 'on',
+        threads: formData.get('channel_threads') === 'on',
+        notion: formData.get('channel_notion') === 'on',
+      },
     },
     { merge: true },
   );
@@ -178,6 +218,39 @@ export async function runJobNow(name: string): Promise<ActionResult> {
   const result = await pipeline.runJob(name);
   revalidatePath('/', 'layout');
   return result;
+}
+
+/** Dashboard "report" run button: launches a Research Agent run with automatic
+ * theme selection (same as the monthly scheduler, but trigger=manual). */
+export async function runReportNow(): Promise<ActionResult> {
+  const email = await iapUserEmail();
+  const result = await pipeline.createResearchRun({ trigger: 'manual', requestedBy: email });
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+/** Delete selected channels' remote artifacts (X/Threads/Notion) of one post. */
+export async function deletePostChannels(
+  postId: string, channels: string[],
+): Promise<ActionResult> {
+  const result = await pipeline.deletePost(postId, channels, false);
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+/** Delete whole posts: remote artifacts on every channel, then the Firestore doc. */
+export async function deletePosts(postIds: string[]): Promise<ActionResult> {
+  const details: string[] = [];
+  let ok = true;
+  for (const id of postIds) {
+    const result = await pipeline.deletePost(id, [], true);
+    if (!result.ok) {
+      ok = false;
+      details.push(`${id}: ${result.detail}`);
+    }
+  }
+  revalidatePath('/', 'layout');
+  return { ok, detail: details.join(' / ') };
 }
 
 // ---------- research (report) ----------

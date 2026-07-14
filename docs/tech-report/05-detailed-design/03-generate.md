@@ -1,6 +1,6 @@
 # ② 生成フロー詳細設計 — 短文と記事(長文)
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-13(cadence→format 移行反映)
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(customInstructions・globalChannels 反映)
 
 ## 1. この文書で分かること
 
@@ -39,7 +39,7 @@ flowchart TD
   A["Cloud Scheduler 08:00 JST"] --> B["job-generate-short<br>generate_short.main"]
   B --> C["有効カテゴリを列挙"]
   C --> D["channelConfigs / 直近36h の items /<br>promptTemplates を読込"]
-  D --> E["generate_json — gpt-5.4-mini 1回で<br>3チャネル分の JSON"]
+  D --> E["generate_json — gpt-5.6-luna 1回で<br>3チャネル分の JSON"]
   E --> F{"文字数 OK?"}
   F -- "超過" --> G["縮小リトライ →<br>それでも駄目ならハードトリム"]
   F -- "OK" --> H["Post 作成 — approved または draft"]
@@ -57,14 +57,14 @@ flowchart TD
 flowchart TD
   A["Cloud Scheduler 月曜 07:00 JST"] --> B["run_longform — article"]
   B --> C["期間内の候補 item を最大120件取得<br>article=7日"]
-  C --> E["Stage1: gpt-5.4-mini<br>テーマ・アウトライン・item 選定"]
+  C --> E["Stage1: gpt-5.6-luna<br>テーマ・アウトライン・item 選定"]
   E --> F["選定 item を最大25件、本文付きで再取得"]
-  F --> G["Stage2: gpt-5.5<br>長文本文 + 要約 + ティーザー"]
+  F --> G["Stage2: gpt-5.6-terra<br>長文本文 + 要約 + ティーザー"]
   G --> H["Post 作成 — 常に draft"]
   H --> I["管理画面で承認後に公開 — 04-publish.md"]
 ```
 
-長文は「選定」と「執筆」を分けた2段階です。Stage1 は安価なモデル(`gpt-5.4-mini`)に候補一覧(タイトル+要約)だけを渡してテーマ・章立て・使う item の ID を選ばせ、Stage2 は高性能モデル(`gpt-5.5`)に選ばれた item の本文全文を渡して記事を書かせます。生成結果は必ず `draft` で保存され、このジョブは投稿しません。承認後の公開で X/Threads のティーザー(本文へ誘導する短い宣伝文)末尾に Notion 公開 URL が付く、という後段の話は `04-publish.md` に譲ります。(旧 monthly の「当月の週次記事の要約を積み上げる階層的蓄積」は廃止 — レポートは Research Agent、[10-research-agent.md](10-research-agent.md)。)
+長文は「選定」と「執筆」を分けた2段階です。Stage1 は安価なモデル(`gpt-5.6-luna`)に候補一覧(タイトル+要約)だけを渡してテーマ・章立て・使う item の ID を選ばせ、Stage2 は高性能モデル(`gpt-5.6-terra`)に選ばれた item の本文全文を渡して記事を書かせます。生成結果は必ず `draft` で保存され、このジョブは投稿しません。承認後の公開で X/Threads のティーザー(本文へ誘導する短い宣伝文)末尾に Notion 公開 URL が付く、という後段の話は `04-publish.md` に譲ります。(旧 monthly の「当月の週次記事の要約を積み上げる階層的蓄積」は廃止 — レポートは Research Agent、[10-research-agent.md](10-research-agent.md)。)
 
 ## 4. 処理の流れ
 
@@ -72,10 +72,10 @@ flowchart TD
 
 1. **実行記録の開始** — `runs.start("generate_short")` で Firestore の `runs` コレクションに開始レコードを作り、以降の統計(作成数・投稿数・失敗数・コスト)をここに集めます。
 2. **カテゴリループ** — `configs.enabled_categories()` が返す有効カテゴリを1つずつ処理します。1カテゴリの失敗は `try/except` で捕まえて記録し、次のカテゴリへ進みます(§7)。
-3. **チャネル設定の読込** — `configs.channel_config()` で category×format×channel ごとの設定(有効/無効と言語)を X・Threads・Notion の3件読みます。**3チャネルすべて無効ならそのカテゴリはスキップ**(`None` を返す)。設定ドキュメントが存在しないチャネルは「無効・英語」として扱われます。
+3. **チャネル設定の読込** — `configs.channel_config()` で category×format×channel ごとの設定(有効/無効と言語)を X・Threads・Notion の3件読みます。**3チャネルすべて無効ならそのカテゴリはスキップ**(`None` を返す)。設定ドキュメントが存在しないチャネルは「無効・英語」として扱われます。また `settings/app` の `globalChannels`(チャネル全体のキルスイッチ、既定 `{x: false, threads: false, notion: true}`)が false のチャネルは、カテゴリ別設定が有効でも `channel_config()` 内で強制的に無効化されます(`../03-data-model.md`)。
 4. **直近アイテムの取得** — `items.recent_for_category(category.slug, LOOKBACK_HOURS, limit=MAX_ITEMS)` で **直近36時間**(`LOOKBACK_HOURS = 36`)の item を新しい順に**最大15件**(`MAX_ITEMS = 15`)取得。0件ならスキップします。36時間なのは、毎日 06:00 の収集が1回失敗しても前日分でカバーできる余裕を持たせるためです。
-5. **プロンプト構築** — `configs.prompt_template(category.slug, Format.short)` で Firestore の `promptTemplates` からテンプレートを読み(無い・無効ならスキップ)、`userPromptTemplate.format(...)` にプレースホルダを流し込みます。item 一覧は `prompts.format_items_for_prompt()` が「タイトル/要約/URL」の箇条書きに整形。言語は `channelConfigs` の値(`ja`/`ko`/`en`)を "Japanese" 等の英語名に変換して `x_language` などとして注入します(プロンプト本文は内容の指示だけを担い、言語は設定から来る、という分業)。**焦点キーワード**(`template.focusKeywords`)は `{keywords}` として渡され、さらに `prompts.apply_keywords()` が「テンプレに `{keywords}` が無ければ焦点指示の一文を末尾に自動付加」します。これにより、ユーザーがシステムプロンプトを編集しなくても、キーワード欄を入れるだけで生成の焦点が変わります(記事も同様に第1段の選定プロンプトと第2段の執筆プロンプトの両方へ付加)。
-6. **LLM 1回で3チャネル分を JSON 生成** — `openai_client.generate_json()` を1回呼び、`x_text` / `threads_text` / `notion_title` / `notion_summary` を持つ JSON を受け取ります。モデルはテンプレートの `modelOverride`、無ければ `config.py` の `openai_model_daily`(既定 `gpt-5.4-mini`)。トークン使用量は `TokenUsage` に累積されます。
+5. **プロンプト構築** — `configs.prompt_template(category.slug, Format.short)` で Firestore の `promptTemplates` からテンプレートを読み(無い・無効ならスキップ)、`userPromptTemplate.format(...)` にプレースホルダを流し込みます。item 一覧は `prompts.format_items_for_prompt()` が「タイトル/要約/URL」の箇条書きに整形。言語は `channelConfigs` の値(`ja`/`ko`/`en`)を "Japanese" 等の英語名に変換して `x_language` などとして注入します(プロンプト本文は内容の指示だけを担い、言語は設定から来る、という分業)。**焦点キーワード**(`template.focusKeywords`)は `{keywords}` として渡され、さらに `prompts.apply_keywords()` が「テンプレに `{keywords}` が無ければ焦点指示の一文を末尾に自動付加」します。これにより、ユーザーがシステムプロンプトを編集しなくても、キーワード欄を入れるだけで生成の焦点が変わります(記事も同様に第1段の選定プロンプトと第2段の執筆プロンプトの両方へ付加)。さらに**カスタム指示**(`template.customInstructions`。管理画面の `/focus` ページで編集する自由記述の常設リクエスト)があれば、`prompts.apply_custom_instructions()` が user プロンプト末尾に **OWNER INSTRUCTIONS ブロック**(`prompts.custom_instructions_block()`)として付加します。指示は ko/ja/en どの言語で書かれていてもよい旨と、**既存の出力言語指定は変えない**旨がブロック内に明記されているため、チャネル別言語(X=ja 等)は崩れません。
+6. **LLM 1回で3チャネル分を JSON 生成** — `openai_client.generate_json()` を1回呼び、`x_text` / `threads_text` / `notion_title` / `notion_summary` を持つ JSON を受け取ります。モデルはテンプレートの `modelOverride`、無ければ `config.py` の `openai_model_daily`(既定 `gpt-5.6-luna`)。トークン使用量は `TokenUsage` に累積されます。
 7. **文字数検査と縮小リトライ** — `x_text` はまず `renderer.strip_urls()` で URL を除去(短文の X 投稿は原則 URL 無しの方針)。`renderer.fits_x()`(重み付き280字)か `renderer.fits_threads()`(500字)に落ちたら、`_shrink_retry()` で「前回の出力を添えて短く書き直せ」と同じモデルにもう1回だけ依頼。それでも Threads が超過するときは末尾を切って「…」を付けるハードトリム。X はトリムせず、超過分は `renderer.split_for_x_thread()` で連投スレッドに分割します(§6.2)。
 8. **Post の組み立て** — `Post` を `format=short` で作ります。`status` は `shortRequireApproval` が真なら `draft`、偽(既定)なら `approved`。Notion 向けには `notion_summary` を `body` にも入れます。アプリ設定 `attachImages` が有効なら、直近 item のうち最初に画像を持つものの GCS パスを X/Threads の添付画像として記録します。無効なチャネルは最初から `skipped` 状態です。
 9. **保存と使用済みマーク** — `posts.create(post)` で保存し、`items.mark_used()` で材料にした item 全件へ post ID を記録します(管理画面で「この item はどの投稿に使われたか」を追えるように)。
@@ -85,10 +85,10 @@ flowchart TD
 ### 4.2 記事(`run_longform()` → `longform.generate_for_category()`)
 
 1. **共通骨格** — `generate_article.py` が `run_longform(Format.article)` を呼ぶだけです。フォーマット以外のロジックは `longform_runner.py` と `longform.py` で共通化されています。ジョブ種別名は `generate_article` として `runs` に記録されます。(旧 monthly の深掘り調査はレポート=Research Agent に置換、[10-research-agent.md](10-research-agent.md)。)
-2. **テンプレートと候補の取得** — カテゴリごとに `promptTemplates` を読み(無ければスキップ)、`items.recent_for_category()` で候補 item を取得します。振り返り期間は `LOOKBACK = {article: 7*24}`(時間)、つまり記事は7日で、上限は `MAX_CANDIDATES = 120` 件。**候補が3件未満なら「材料不足」としてスキップ**します。
-3. **Stage1: 選定とアウトライン(安いモデル)** — 候補を `format_items_for_prompt(candidates, include_ids=True)` で「`[item ID]` タイトル/要約/URL」形式に整形します(この段階では本文全文は渡さない)。これを `openai_model_daily`(`gpt-5.4-mini`)に渡し、`theme`(週を貫くテーマ)・`title`・`outline`(章立て)・`selected_item_ids`(使う item の ID、15〜25件を指示)を JSON で受け取ります。
+2. **テンプレートと候補の取得** — カテゴリごとに `promptTemplates` を読み(無ければスキップ)、`items.recent_for_category()` で候補 item を取得します。テンプレートに `customInstructions` があれば、第1段(選定)・第2段(執筆)両方の user プロンプトへ `prompts.apply_custom_instructions()` で OWNER INSTRUCTIONS ブロックを付加します(§4.1 手順5と同じ仕組み)。振り返り期間は `LOOKBACK = {article: 7*24}`(時間)、つまり記事は7日で、上限は `MAX_CANDIDATES = 120` 件。**候補が3件未満なら「材料不足」としてスキップ**します。
+3. **Stage1: 選定とアウトライン(安いモデル)** — 候補を `format_items_for_prompt(candidates, include_ids=True)` で「`[item ID]` タイトル/要約/URL」形式に整形します(この段階では本文全文は渡さない)。これを `openai_model_daily`(`gpt-5.6-luna`)に渡し、`theme`(週を貫くテーマ)・`title`・`outline`(章立て)・`selected_item_ids`(使う item の ID、15〜25件を指示)を JSON で受け取ります。
 4. **選定結果の確定** — 返ってきた ID から文字列でないものを除き、`MAX_SELECTED = 25` 件に切り詰めてから `items.get_many()` で実体を引き直します。1件も解決できなければ、保険として候補の先頭25件をそのまま使います。
-5. **Stage2: 本文執筆(高性能モデル)** — 選ばれた item を今度は `max_content=4000` 付きで整形し、**各 item の本文全文(最大4,000字)** をプロンプトに含めます。Stage1 の `theme` と `outline` も添えて、`modelOverride` または `openai_model_longform`(既定 `gpt-5.5`)に渡し、`title` / `body`(Markdown の長文。記事1,200〜1,800語を既定プロンプトで指示)/ `summary` / `teasers`(X・Threads 用ティーザー)を受け取ります。
+5. **Stage2: 本文執筆(高性能モデル)** — 選ばれた item を今度は `max_content=4000` 付きで整形し、**各 item の本文全文(最大4,000字)** をプロンプトに含めます。Stage1 の `theme` と `outline` も添えて、`modelOverride` または `openai_model_longform`(既定 `gpt-5.6-terra`)に渡し、`title` / `body`(Markdown の長文。記事1,200〜1,800語を既定プロンプトで指示)/ `summary` / `teasers`(X・Threads 用ティーザー)を受け取ります。
 6. **Post の組み立て — 常に `draft`** — 記事の `Post` は無条件に `status=draft` です(記事は必ず人間の承認を挟む運用決定)。本文は `body` に、X/Threads チャネルにはティーザー文だけを入れます(公開 URL は承認後の公開処理で付く)。Notion チャネルの `text` は空で、公開時に `body` からページが組み立てられます。X ティーザーは `strip_urls()` で URL を除去しますが、**短文と違い文字数検査や縮小リトライはここでは行いません**(既定プロンプトで X 200字・Threads 400字以下を指示し、URL 追記時の切り詰めは公開側 `renderer.append_url()` が担当)。
 7. **保存と記録** — 短文と同じく `posts.create()` → `items.mark_used()` → `runs.finish()`。投稿処理は一切呼びません。承認後の公開は管理画面から pipeline-api 経由で行われます(`04-publish.md`)。
 
@@ -144,7 +144,7 @@ flowchart TD
 
 - **役割**: 入出力トークン数から概算コスト(USD)を計算する。
 - **入出力**: モデル名・入力トークン数・出力トークン数 → 小数6桁の USD。
-- **要点**: 単価表 `PRICES` はコード内の固定値で、**gpt-5.4-mini = 入力 $0.75 / 出力 $4.50、gpt-5.5 = 入力 $5.00 / 出力 $30.00(いずれも100万トークンあたり)**。これは**請求とは別の「コスト目安」**であり、OpenAI の実請求額とは一致しない(価格改定に自動追従しないし、`PRICES` に無いモデル名は $0 として扱われる)。実額は OpenAI ダッシュボードで確認する(`../../runbook.md` のコスト監視参照)。
+- **要点**: 単価表 `PRICES` はコード内の固定値で、**gpt-5.6-sol = 入力 $5.00 / 出力 $30.00、gpt-5.6-terra = 入力 $2.50 / 出力 $15.00、gpt-5.6-luna = 入力 $1.00 / 出力 $6.00(いずれも100万トークンあたり)**。旧モデルの行(gpt-5.4-mini = $0.75/$4.50、gpt-5.5 = $5.00/$30.00)は、`promptTemplates.modelOverride` が旧モデルを固定しているケースでも計上が $0 にならないよう残置してある。これは**請求とは別の「コスト目安」**であり、OpenAI の実請求額とは一致しない(価格改定に自動追従しないし、`PRICES` に無いモデル名は $0 として扱われる)。実額は OpenAI ダッシュボードで確認する(`../../runbook.md` のコスト監視参照)。
 
 ### prompts.format_items_for_prompt()
 
@@ -248,11 +248,11 @@ X は単純な文字数ではなく「重み付き文字数」(全角=2、半角
     article = generate_json(model, template.systemPrompt, article_user, usage)
 ```
 
-- **Stage1 は `openai_model_daily`(`gpt-5.4-mini`)** — 最大120件の候補の「タイトル+要約」を読ませて選定と章立てだけをさせる。入力は大きいが出力は小さい仕事なので、単価が gpt-5.5 の 1/6.7(入力)しかない mini で十分。
-- **Stage2 は `openai_model_longform`(`gpt-5.5`)** — 入力を「選ばれた最大25件×本文最大4,000字」に絞り込んだうえで、品質が問われる長文執筆だけを高いモデルにやらせる。**もし1段階で「120件の全文を gpt-5.5 に読ませて書かせる」と、入力トークンが桁で増え、かつ選定と執筆を同時にやらせて品質も落ちる**。この分業がコストと品質のトレードオフの答えになっている。
+- **Stage1 は `openai_model_daily`(`gpt-5.6-luna`)** — 最大120件の候補の「タイトル+要約」を読ませて選定と章立てだけをさせる。入力は大きいが出力は小さい仕事なので、単価が gpt-5.6-terra の 1/2.5(入力)しかない luna で十分。
+- **Stage2 は `openai_model_longform`(`gpt-5.6-terra`)** — 入力を「選ばれた最大25件×本文最大4,000字」に絞り込んだうえで、品質が問われる長文執筆だけを高いモデルにやらせる。**もし1段階で「120件の全文を gpt-5.6-terra に読ませて書かせる」と、入力トークンが桁で増え、かつ選定と執筆を同時にやらせて品質も落ちる**。この分業がコストと品質のトレードオフの答えになっている。
 - `if isinstance(i, str)` と `[:MAX_SELECTED]` — LLM の返す `selected_item_ids` は形式が乱れうる(数値混入・過剰な件数)ため、型と件数をコード側で強制する。
 - `if not selected: selected = candidates[:MAX_SELECTED]` — Stage1 が実在しない ID ばかり返しても、新しい順の先頭25件で Stage2 を続行するフォールバック。「選定の失敗」で記事が丸ごと欠番になるより、平凡でも記事が出るほうがよいという判断。
-- `template.modelOverride or ...` — カテゴリ×フォーマット単位でモデルを差し替えられるのは Stage2 のみ。選定はどのカテゴリでも mini で固定。
+- `template.modelOverride or ...` — カテゴリ×フォーマット単位でモデルを差し替えられるのは Stage2 のみ。選定はどのカテゴリでも luna で固定。
 
 ### 6.4 プロンプトの2層構造 — Firestore `promptTemplates` と `prompts.DEFAULTS`
 
@@ -313,6 +313,8 @@ X は単純な文字数ではなく「重み付き文字数」(全角=2、半角
 | 短文の振り返り時間・件数 | `pipeline/app/generators/short.py` の `LOOKBACK_HOURS`(36)/ `MAX_ITEMS`(15) | 件数を増やすと入力トークンが線形に増える。パラメータ一覧は `../04-parameters.md` |
 | 長文の候補数・選定数・期間 | `pipeline/app/generators/longform.py` の `LOOKBACK` / `MAX_CANDIDATES`(120)/ `MAX_SELECTED`(25)と最少件数(3) | `MAX_SELECTED`×`max_content=4000` が Stage2 の入力サイズを決める。既定プロンプトの「15-25 ids」の文言とも整合させる |
 | 短文を承認制にする | 管理画面から `settings/app` の `shortRequireApproval` を true に | コード変更不要。post が `draft` で止まり、承認後の公開は `04-publish.md` の経路 |
+| チャネルを全カテゴリ一括で止める/動かす | 管理画面の設定ページ(`settings/app` の `globalChannels`) | カテゴリ別 `channelConfigs` と AND で効く(`configs.channel_config()`)。既存 post のチャネル状態は変わらない(効くのは次の生成から) |
+| カテゴリ×フォーマット単位の常設指示を入れる | 管理画面の `/focus` ページ(`promptTemplates.customInstructions`) | `prompts.apply_custom_instructions()` が short・article(2段とも)・report write に付加。出力言語は変えない設計(`prompts.custom_instructions_block()` の文言) |
 | 単価表の更新 | `pipeline/app/generators/openai_client.py` の `PRICES` | あくまで目安値。実請求は OpenAI ダッシュボード(`../../runbook.md`) |
 | post / run のフィールド追加 | `pipeline/app/models.py` → `../03-data-model.md#posts` を更新 | admin 側の表示(`admin/src/lib/data.ts`)と `shared/constants.json` の enum に影響しないか確認 |
 

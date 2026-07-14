@@ -76,6 +76,21 @@ def publish_container(container_id: str) -> str:
 
 
 @api_retry
+def delete(media_id: str) -> None:
+    """Delete a published thread (Threads API DELETE /{media-id})."""
+    settings = get_settings()
+    with httpx.Client(timeout=30) as client:
+        resp = client.delete(
+            f"{GRAPH}/{media_id}",
+            params={"access_token": settings.threads_access_token},
+        )
+        if resp.status_code == 404:  # already gone remotely
+            return
+        resp.raise_for_status()
+    log.info("threads deleted", extra={"fields": {"id": media_id}})
+
+
+@api_retry
 def refresh_long_lived_token(current_token: str) -> dict:
     """Returns {"access_token": ..., "expires_in": seconds}."""
     with httpx.Client(timeout=30) as client:

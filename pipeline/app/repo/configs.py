@@ -79,14 +79,29 @@ def category_focus_keywords(category_id: str) -> list[str]:
 
 
 def channel_config(category_id: str, post_format: Format, channel: Channel) -> ChannelConfig:
+    """Per-category config ANDed with the global channel switch in settings/app,
+    so turning a channel off in the admin settings silences it everywhere."""
     doc_id = f"{category_id}_{post_format.value}_{channel.value}"
     snap = db().collection("channelConfigs").document(doc_id).get()
     if not snap.exists:
-        return ChannelConfig(
+        cfg = ChannelConfig(
             id=doc_id, categoryId=category_id, format=post_format, channel=channel,
             enabled=False, language="en",
         )
-    return ChannelConfig(id=snap.id, **snap.to_dict())
+    else:
+        cfg = ChannelConfig(id=snap.id, **snap.to_dict())
+    if cfg.enabled and not app_settings().globalChannels.get(channel.value, True):
+        cfg.enabled = False
+    return cfg
+
+
+def custom_instructions(category_id: str, post_format: Format) -> str:
+    """Owner's standing requests for a category x format. Read raw (ignores the
+    template's enabled flag) — preferences apply to manual runs too."""
+    snap = db().collection("promptTemplates").document(f"{category_id}_{post_format.value}").get()
+    if not snap.exists:
+        return ""
+    return str((snap.to_dict() or {}).get("customInstructions", "") or "")
 
 
 def app_settings() -> AppSettings:

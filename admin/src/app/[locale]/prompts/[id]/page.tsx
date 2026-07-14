@@ -43,6 +43,18 @@ export default async function PromptEditPage({
               {t('focusKeywordsHint')}
             </span>
           </label>
+          <label className="block rounded-xl border border-accent-line bg-accent-soft p-4 text-sm">
+            <span className="font-semibold text-accent-hover">{t('customInstructions')}</span>
+            <textarea
+              name="customInstructions"
+              rows={4}
+              className={`${inputCls} resize-y leading-relaxed`}
+              defaultValue={tpl?.customInstructions ?? ''}
+            />
+            <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
+              {t('customInstructionsHint')}
+            </span>
+          </label>
           <label className={labelCls}>
             {t('systemPrompt')}
             <textarea name="systemPrompt" rows={6} className={areaCls}

@@ -1,6 +1,6 @@
 # 03. データモデル — Firestore コレクション仕様
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-12
+> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14
 
 ## 1. この文書で分かること
 
@@ -25,8 +25,8 @@
 | `settings`(doc `notion`) | 固定名 `notion` | seed・admin | Notion publisher・admin | 投稿先 Notion データベースの ID |
 | `settings`(doc `channelHealth`) | 固定名 `channelHealth` | Threads トークン更新ジョブ | admin | Threads トークンの期限・エラー表示用 |
 | `researchRuns` | `rr_{YYYYMMDD}_{ランダム6}` | research API・Research Harness | admin・Harness | レポート調査の状態・計画・予算・lease(§4.7 / doc 10) |
-| `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | Harness R4 | Harness・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
-| `researchRuns/{id}/claims` | `{claimId}` | Harness R5 | Harness・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
+| `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | Harness extract | Harness・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
+| `researchRuns/{id}/claims` | `{claimId}` | Harness verify | Harness・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
 | `researchRuns/{id}/events` | 自動採番 | Harness 全フェーズ | admin | 追記専用の監査ログ(doc 10 §6.5) |
 
 > **研究系4コレクション(`researchRuns` とサブコレクション)は Research Agent(レポート)専用**で、pydantic 定義は `pipeline/app/research/schemas.py`、Firestore アクセスは `pipeline/app/repo/research.py`(本リポジトリ初のトランザクション lease を含む)。全フィールド表・JSON 例・docID 規約・状態機械は一次資料の [`05-detailed-design/10-research-agent.md`](05-detailed-design/10-research-agent.md) を参照。状態値 `researchRunStatuses`(queued / running / awaiting_plan_approval / awaiting_review / completed / failed / cancelled / budget_exhausted)は `shared/constants.json` にあり §7 の enum チェックリスト対象。複合インデックス `researchRuns(status ASC, createdAt ASC)`(§6 の #6)がキュー取得に必要。
@@ -105,8 +105,8 @@
 | `createdAt` | timestamp | 作成日時(`posts.create()` が付与) | `repo/posts.py` | admin 読(一覧の並び順) |
 | `approvedBy` | string | 承認者のメールアドレス(IAP 認証由来) | api(公開エンドポイント) | admin 読 |
 | `publishedAt` | timestamp / null | 1 チャネル以上成功した時刻 | publish | pipeline のみ(**注: `types.ts` の `Post` には無い**) |
-| `researchRunId` | string | **report のみ**。生成元の `researchRuns/{id}`(監査・再現性の逆参照) | Research Harness R9 | admin 読 |
-| `localizations` | map<lang, {title, summary, body, notionPageId?, url?}> | **report のみ**。ja/ko/en の言語別本文。言語別 Notion 3ページの ID/URL を公開時に格納(doc 10 §6.2) | Harness R9・publish | publish・admin 読 |
+| `researchRunId` | string | **report のみ**。生成元の `researchRuns/{id}`(監査・再現性の逆参照) | Research Harness review(handoff) | admin 読 |
+| `localizations` | map<lang, {title, summary, body, notionPageId?, url?}> | **report のみ**。ja/ko/en の言語別本文。言語別 Notion 3ページの ID/URL を公開時に格納(doc 10 §6.2) | Harness review(handoff)・publish | publish・admin 読 |
 
 #### channels 内の ChannelState(重点解説)
 
@@ -230,9 +230,10 @@
 | `outlineSystemPrompt` / `outlineUserPromptTemplate` | string | article/report の 2 段階生成の第 1 段(記事の選定と骨子作り)用。short では空 | seed、admin 書 | longform 生成 |
 | `modelOverride` | string | 空でなければ既定モデル名(`config.py`)を上書き | seed(空)、admin 書 | 生成 |
 | `focusKeywords` | string[] | このカテゴリ×フォーマットで重視するキーワード。**収集**(同カテゴリの全フォーマット分の和集合で Gemini Web 検索を方向づけ。`configs.category_focus_keywords()`)と**生成**(プロンプトに焦点指示を付加。`prompts.apply_keywords()`)の両方で効く。空 = 従来どおり。'重視'ポリシー(キーワード以外の重要ニュースも拾う) | seed(空)、admin 書 | 収集・生成 |
+| `customInstructions` | string | オーナーの自由記述の常設リクエスト(ko/ja/en どれで書いてもよい)。`configs.custom_instructions()` が読み、`prompts.custom_instructions_block()` が OWNER INSTRUCTIONS ブロックとして生成プロンプト末尾に付加する(short / article の2段階 / report の write)。**出力言語は変えない**(言語指定は channelConfigs が優先)。テンプレートの `enabled` フラグとは独立に読まれる | seed(空)、admin 書(`/focus` の `saveFocus()`) | 生成(short・article・report write) |
 | `enabled` | boolean | false なら生成スキップ | seed、admin 書 | `prompt_template()` |
 
-具体例(`promptTemplates/science-technology_short`、プロンプト本文は省略): `{ "categoryId": "science-technology", "format": "short", "systemPrompt": "You are a sharp, trustworthy news curator…", "userPromptTemplate": "Today is {date}. Category: {category}…", "outlineSystemPrompt": "", "outlineUserPromptTemplate": "", "modelOverride": "", "focusKeywords": [], "enabled": true }`
+具体例(`promptTemplates/science-technology_short`、プロンプト本文は省略): `{ "categoryId": "science-technology", "format": "short", "systemPrompt": "You are a sharp, trustworthy news curator…", "userPromptTemplate": "Today is {date}. Category: {category}…", "outlineSystemPrompt": "", "outlineUserPromptTemplate": "", "modelOverride": "", "focusKeywords": [], "customInstructions": "", "enabled": true }`
 
 ### settings
 
@@ -246,6 +247,7 @@
 | `shortRequireApproval` | boolean | true なら短文も `draft`(下書き)で止める安全弁(既定 false = 自動投稿) | seed、admin 書 | short 生成(初期 status の分岐) |
 | `xAllowUrlOnShort` | boolean | 短文の X 投稿にも Notion URL を付けるか(既定 false。X は URL 付きだとリーチが下がる想定の運用判断) | seed、admin 書 | publish(`_publish_x()`) |
 | `attachImages` | boolean | X/Threads への画像添付を行うか(既定 true) | seed、admin 書 | short 生成(画像選択)、publish(`_load_image()` / 署名 URL 発行) |
+| `globalChannels` | map<string, bool> | チャネル全体のキルスイッチ `{x, threads, notion}`(既定 `{x: false, threads: false, notion: true}`)。**生成時に channelConfigs の `enabled` と AND** される(`configs.channel_config()` が false のチャネルを強制無効化)。カテゴリ別設定を書き換えずに全カテゴリ一括でチャネルを止められる。ダッシュボードの自動化グリッドには true のチャネル列だけが表示される | seed、admin 書(設定ページ) | `configs.channel_config()`、admin 読 |
 
 **`settings/notion`** — 対応する Pydantic モデルは無く、`{ "databaseId": string }` だけの素のドキュメント。Notion publisher(`pipeline/app/publishers/notion.py` の `publish()`)が `configs.notion_database_id()` で読み、**空のままだと Notion 公開は RuntimeError で失敗する**(初期セットアップ後に admin の設定ページで入力する運用。手順は `docs/setup-credentials.md`)。
 
@@ -327,7 +329,7 @@ stateDiagram-v2
 
 ### (b) ChannelState.status
 
-`ChannelStatus`(`pipeline/app/models.py`)の 4 値: `pending`(公開待ち)/ `published` / `failed` / `skipped`(対象外)。
+`ChannelStatus`(`pipeline/app/models.py`)の 5 値: `pending`(公開待ち)/ `published` / `failed` / `skipped`(対象外)/ `deleted`(リモート削除済み)。
 
 ```mermaid
 stateDiagram-v2
@@ -337,9 +339,10 @@ stateDiagram-v2
     pending --> published: 公開成功で externalId 記録
     pending --> failed: 公開中の例外
     failed --> pending: 管理画面のチャネルリトライ
+    published --> deleted: 管理画面の削除(リモート成果物を除去)
 ```
 
-図の読み方: チャネル状態は投稿(post)全体の状態とは独立に、チャネルごとに進む。生成時に channelConfigs で無効だったチャネルは最初から `skipped`。admin の公開画面でチェックを外したチャネルも公開直前に `skipped`(かつ `enabled=false`)へ落とされる。`publish_post()` は `published` / `skipped`、または `externalId` が既に入っているチャネルを飛ばすため、途中クラッシュ後の再実行でも成功済みチャネルへ再投稿しない。`skipped` と `published` は終端で、そこから戻る遷移は存在しない(リトライできるのは `failed` のみ)。
+図の読み方: チャネル状態は投稿(post)全体の状態とは独立に、チャネルごとに進む。生成時に channelConfigs で無効だったチャネルは最初から `skipped`。admin の公開画面でチェックを外したチャネルも公開直前に `skipped`(かつ `enabled=false`)へ落とされる。`publish_post()` は `published` / `skipped`、または `externalId` が既に入っているチャネルを飛ばすため、途中クラッシュ後の再実行でも成功済みチャネルへ再投稿しない。`skipped` と `published` から戻る遷移は存在しない(リトライできるのは `failed` のみ)。`deleted` は admin の削除操作(pipeline-api の `POST /api/posts/{id}/delete` → `publishers/base.py` の `delete_post_channels()`)がリモート成果物(X ツイート・Threads メディア・Notion ページ)を削除した終端状態で、`enabled=false` も同時にセットされ再公開はされない([05-detailed-design/04-publish.md](05-detailed-design/04-publish.md) 参照)。
 
 | 遷移 | トリガー | 実行コード |
 |---|---|---|
@@ -349,6 +352,7 @@ stateDiagram-v2
 | `pending` → `published` | notion → x → threads の順の公開が成功し `externalId` を記録 | `publishers/base.py` の `_publish_notion()` / `_publish_x()` / `_publish_threads()` |
 | `pending` → `failed` | 公開中の例外(`error` に先頭 1,000 字を保存) | `publishers/base.py` の `publish_post()` の except 節 |
 | `failed` → `pending` | admin のチャネルリトライ(`error` をクリアしてから単一チャネルで `publish_post()`) | `pipeline/app/main.py` の `retry_channel()` |
+| `published` → `deleted` | admin の削除操作(リモート成果物の削除に成功。`enabled=false` も同時設定) | `pipeline/app/main.py` の `delete_post()` → `publishers/base.py` の `delete_post_channels()` |
 
 ## 6. 複合インデックス
 

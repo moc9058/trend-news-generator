@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/ActionButton';
+import { ResearchFlow } from '@/components/ResearchFlow';
 import {
   Card, Chip, EmptyState, PageHeader, StatusBadge, Table, tdCls, thCls,
 } from '@/components/ui';
@@ -50,6 +51,10 @@ export default async function ResearchRunPage({
         <Meta label={t('cost')} value={`$${(run.budget?.usdSpent ?? 0).toFixed(2)} / ${(run.budget?.usdCap ?? 0).toFixed(0)}`} />
         <Meta label={t('fetches')} value={`${run.budget?.fetchUsed ?? 0} / ${run.budget?.fetchCap ?? 0}`} />
       </div>
+
+      <Card title={t('flow')} flush>
+        <ResearchFlow run={run} events={events} />
+      </Card>
 
       {run.plan && (
         <Card title={t('plan')} hint={run.plan.contested ? t('contested') : undefined}>

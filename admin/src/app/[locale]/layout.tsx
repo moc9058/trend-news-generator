@@ -10,27 +10,16 @@ import '../globals.css';
 
 export const dynamic = 'force-dynamic';
 
-/** Nav grouped by the pipeline's actual flow: monitor → content → pipeline config → system. */
+/** Slim daily-driver nav. Rarely-used config pages (categories/sources/prompts/
+ * channels/research) stay routable but are reached via the settings hub. */
 const NAV_GROUPS: { group: string; items: { href: string; key: string; icon: IconName }[] }[] = [
   {
-    group: 'groupMonitor',
-    items: [{ href: '', key: 'dashboard', icon: 'dashboard' }],
-  },
-  {
-    group: 'groupContent',
+    group: 'groupMain',
     items: [
-      { href: '/drafts', key: 'drafts', icon: 'drafts' },
+      { href: '', key: 'dashboard', icon: 'dashboard' },
       { href: '/posts', key: 'posts', icon: 'posts' },
-      { href: '/research', key: 'research', icon: 'research' },
-    ],
-  },
-  {
-    group: 'groupPipeline',
-    items: [
-      { href: '/categories', key: 'categories', icon: 'categories' },
-      { href: '/sources', key: 'sources', icon: 'sources' },
-      { href: '/prompts', key: 'prompts', icon: 'prompts' },
-      { href: '/channels', key: 'channels', icon: 'channels' },
+      { href: '/drafts', key: 'drafts', icon: 'drafts' },
+      { href: '/focus', key: 'focus', icon: 'target' },
     ],
   },
   {

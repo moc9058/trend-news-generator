@@ -13,7 +13,7 @@ export type NavGroup = { group: string; groupLabel: string; items: NavItem[] };
 function Brand({ compact }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3 px-1">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent font-mono text-sm font-bold text-white">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-accent-hover font-mono text-sm font-bold text-white shadow-raised">
         T
       </div>
       <div className={compact ? 'hidden leading-tight lg:block' : 'leading-tight'}>
@@ -116,7 +116,7 @@ export function AppShell({
   return (
     <div className="flex min-h-screen">
       {/* Desktop rail (lg+): icon-only at lg, full at lg width, exactly as before. */}
-      <aside className="sticky top-0 hidden h-screen w-16 shrink-0 flex-col bg-ink px-3 py-5 lg:flex lg:w-64 lg:px-4">
+      <aside className="sticky top-0 hidden h-screen w-16 shrink-0 flex-col border-r border-white/5 bg-gradient-to-b from-ink to-[#10141C] px-3 py-5 lg:flex lg:w-64 lg:px-4">
         <div className="mb-8">
           <Brand compact />
         </div>
@@ -133,7 +133,7 @@ export function AppShell({
           aria-hidden
         />
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82vw] flex-col bg-ink px-4 py-5 shadow-2xl transition-transform duration-200 ease-out ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82vw] flex-col bg-gradient-to-b from-ink to-[#10141C] px-4 py-5 shadow-2xl transition-transform duration-200 ease-out ${
             open ? 'translate-x-0' : '-translate-x-full'
           }`}
           role="dialog"

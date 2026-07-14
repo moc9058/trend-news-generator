@@ -56,13 +56,13 @@ def test_is_terminal():
 
 # ---------- phase transitions (design §4.1) ----------
 
-def test_linear_next_walks_the_order_and_stops_after_R9():
-    assert linear_next(Phase.R0) is Phase.R1
-    assert linear_next(Phase.R6) is Phase.R7
-    assert linear_next(Phase.R7) is Phase.R7L
-    assert linear_next(Phase.R7L) is Phase.R8
-    assert linear_next(Phase.R8) is Phase.R9
-    assert linear_next(Phase.R9) is None
+def test_linear_next_walks_the_order_and_stops_after_review():
+    assert linear_next(Phase.plan) is Phase.gather
+    assert linear_next(Phase.gather) is Phase.extract
+    assert linear_next(Phase.extract) is Phase.verify
+    assert linear_next(Phase.verify) is Phase.write
+    assert linear_next(Phase.write) is Phase.review
+    assert linear_next(Phase.review) is None
 
 
 def _coverage(resolved_flags):
@@ -74,13 +74,13 @@ def test_gap_decision_loops_only_when_allowed():
     unresolved = _coverage([True, False])
     resolved = _coverage([True, True])
     # unresolved, under loop cap, budget ok → loop
-    assert gap_decision(unresolved, loops=0, max_loops=2, can_afford_retrieve=True) == "loop"
+    assert gap_decision(unresolved, loops=0, max_loops=2, can_afford_gather=True) == "loop"
     # loop ceiling reached → finalize (surface gaps, don't loop forever)
-    assert gap_decision(unresolved, loops=2, max_loops=2, can_afford_retrieve=True) == "finalize"
+    assert gap_decision(unresolved, loops=2, max_loops=2, can_afford_gather=True) == "finalize"
     # out of budget → finalize even if unresolved
-    assert gap_decision(unresolved, loops=0, max_loops=2, can_afford_retrieve=False) == "finalize"
+    assert gap_decision(unresolved, loops=0, max_loops=2, can_afford_gather=False) == "finalize"
     # everything resolved → finalize
-    assert gap_decision(resolved, loops=0, max_loops=2, can_afford_retrieve=True) == "finalize"
+    assert gap_decision(resolved, loops=0, max_loops=2, can_afford_gather=True) == "finalize"
 
 
 def test_critic_decision_revises_at_most_once():
@@ -95,19 +95,26 @@ def test_critic_decision_revises_at_most_once():
 
 def test_budget_charges_and_reports_remaining():
     b = Budget(BudgetState(usdCap=10.0))
-    spent = b.charge_llm("gpt-5.4-mini", 1_000_000, 0)  # $0.75/1M input
-    assert spent == 0.75 and b.state.usdSpent == 0.75
+    spent = b.charge_llm("gpt-5.6-luna", 1_000_000, 0)  # $1.00/1M input
+    assert spent == 1.0 and b.state.usdSpent == 1.0
     b.charge_usd(2.0)  # a Deep Research call
-    assert b.remaining() == 7.25
+    assert b.remaining() == 7.0
+
+
+def test_budget_prices_gpt56_tiers():
+    b = Budget(BudgetState(usdCap=100.0))
+    assert b.charge_llm("gpt-5.6-sol", 1_000_000, 1_000_000) == 35.0    # 5 + 30
+    assert b.charge_llm("gpt-5.6-terra", 1_000_000, 1_000_000) == 17.5  # 2.5 + 15
+    assert b.charge_llm("gpt-5.6-luna", 1_000_000, 1_000_000) == 7.0    # 1 + 6
 
 
 def test_budget_can_afford_gates_phase_entry():
     b = Budget(BudgetState(usdCap=10.0, usdSpent=9.7))  # $0.30 left
-    assert b.can_afford(Phase.R6) is True    # floor 0.10
-    assert b.can_afford(Phase.R7) is False   # floor 0.50 → graceful degrade
+    assert b.can_afford(Phase.review) is True   # floor 0.30
+    assert b.can_afford(Phase.write) is False   # floor 1.00 → graceful degrade
     assert b.exhausted() is False
     b.charge_usd(0.3)
-    assert b.exhausted() is True and b.can_afford(Phase.R6) is False
+    assert b.exhausted() is True and b.can_afford(Phase.review) is False
 
 
 def test_budget_fetch_and_deep_research_ceilings():

@@ -111,6 +111,38 @@ export async function getMonthCostUsd(): Promise<number> {
   return Math.round(total * 100) / 100;
 }
 
+/** LLM spend: short/article costs live on `runs.costUsd`; report (Research
+ * Agent) costs live on `researchRuns.budget.usdSpent` — the two never overlap. */
+export async function getCostSummary(): Promise<{ monthUsd: number; totalUsd: number }> {
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const [runs, research] = await Promise.all([
+    db().collection('runs').get(),
+    db().collection('researchRuns').get(),
+  ]);
+  let month = 0;
+  let total = 0;
+  runs.docs.forEach((d) => {
+    const data = d.data();
+    const cost = data.costUsd ?? 0;
+    total += cost;
+    const started = data.startedAt?.toDate?.();
+    if (started && started >= start) month += cost;
+  });
+  research.docs.forEach((d) => {
+    const data = d.data();
+    const cost = data.budget?.usdSpent ?? 0;
+    total += cost;
+    const created = data.createdAt?.toDate?.();
+    if (created && created >= start) month += cost;
+  });
+  return {
+    monthUsd: Math.round(month * 100) / 100,
+    totalUsd: Math.round(total * 100) / 100,
+  };
+}
+
 export async function getAppSettings(): Promise<AppSettingsDoc> {
   const snap = await db().collection('settings').doc('app').get();
   const data = snap.data() ?? {};
@@ -119,6 +151,11 @@ export async function getAppSettings(): Promise<AppSettingsDoc> {
     shortRequireApproval: data.shortRequireApproval ?? false,
     xAllowUrlOnShort: data.xAllowUrlOnShort ?? false,
     attachImages: data.attachImages ?? true,
+    globalChannels: {
+      x: data.globalChannels?.x ?? false,
+      threads: data.globalChannels?.threads ?? false,
+      notion: data.globalChannels?.notion ?? true,
+    },
   };
 }
 
@@ -220,9 +257,13 @@ export async function getResearchEvents(runId: string, limit = 200): Promise<Res
       action: data.action ?? '',
       target: data.target ?? '',
       model: data.model ?? '',
+      tokensIn: data.tokensIn ?? 0,
+      tokensOut: data.tokensOut ?? 0,
       costUsd: data.costUsd ?? 0,
       ok: data.ok ?? true,
       error: data.error ?? '',
+      durationMs: data.durationMs ?? 0,
+      detail: data.detail ?? {},
     };
   });
 }

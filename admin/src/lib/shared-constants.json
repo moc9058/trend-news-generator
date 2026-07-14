@@ -9,7 +9,7 @@
     "partially_published",
     "failed"
   ],
-  "channelStatuses": ["pending", "published", "failed", "skipped"],
+  "channelStatuses": ["pending", "published", "failed", "skipped", "deleted"],
   "sourceTypes": ["rss", "gemini_grounded", "ieee_xplore"],
   "languages": ["ja", "ko", "en"],
   "researchRunStatuses": [

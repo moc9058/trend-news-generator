@@ -50,7 +50,7 @@
 
 ## 4. OpenAI / Gemini
 
-- OpenAI: https://platform.openai.com → API key 発行。使用モデル: gpt-5.4-mini（短文・調査の軽量系）/ gpt-5.5（記事・レポートの推論系）。**Deep Research 補助**（レポートのみ・任意）を使う場合は `o4-mini-deep-research`（Responses API, background）へのアクセスが必要。`DEEP_RESEARCH_PROVIDER=openai`（既定）で有効、`off` で無効。1本1回・予算残<$3 で自動スキップ
+- OpenAI: https://platform.openai.com → API key 発行。使用モデル（GPT-5.6 系。単価は 100 万トークンあたり入力/出力、`openai_client.PRICES` と同期）: gpt-5.6-luna（$1.00/$6.00。短文・記事選定・調査の軽量系）/ gpt-5.6-terra（$2.50/$15.00。記事執筆・レポートの検証/執筆/翻訳）/ gpt-5.6-sol（$5.00/$30.00。レポートの計画・監査）。旧モデル gpt-5.4-mini（$0.75/$4.50）・gpt-5.5（$5.00/$30.00）の行は `modelOverride` で旧モデルを固定している場合のコスト計上用に PRICES に残置。**Deep Research 補助**（レポートのみ・任意）を使う場合は `o4-mini-deep-research`（Responses API, background。$2.00/$8.00）へのアクセスが必要。`DEEP_RESEARCH_PROVIDER=openai`（既定）で有効、`off` で無効。1本1回・予算残<$3 で自動スキップ
 - Gemini: https://aistudio.google.com → **Get API key**（Vertex 不要）。Grounding with Google Search は Gemini 3 系で月5,000プロンプト無料。短文収集に加えレポートの `web_grounded`/`gov_docs`/`news` コネクタでも使用
 
 ## 5. 学術・議事録・書籍コネクタ（レポート機能・すべて任意/無料）
