@@ -128,6 +128,16 @@ class TokenUsage(BaseModel):
     costUsd: float = 0.0
 
 
+class LocalizedContent(BaseModel):
+    """Per-language report content for format=report posts (design §4.4, §6.2).
+    notionPageId/url are filled per language as each Notion page is published."""
+    title: str = ""
+    summary: str = ""
+    body: str = ""
+    notionPageId: str = ""
+    url: str = ""
+
+
 class Post(BaseModel):
     id: str = ""
     format: Format
@@ -142,6 +152,9 @@ class Post(BaseModel):
     createdAt: Optional[datetime] = None
     approvedBy: str = ""
     publishedAt: Optional[datetime] = None
+    # report format only (design §4.4)
+    researchRunId: str = ""
+    localizations: dict[str, LocalizedContent] = {}
 
     @model_validator(mode="before")
     @classmethod

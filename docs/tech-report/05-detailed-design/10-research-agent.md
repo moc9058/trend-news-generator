@@ -2,7 +2,7 @@
 
 > 対象コード時点: コミット e93a089(設計時点)/ 最終更新: 2026-07-13
 >
-> **状態: 設計(未実装)** — 本文書は実装前の設計書です。実装は §9「変更するときは」の実装タスク P0–P9 のフェーズで行い、フェーズ完了ごとに該当節を「実装済み」の記述へ更新します。実装指示プロンプトは [`docs/prompts/research-agent-implementation.md`](../../prompts/research-agent-implementation.md) にあります。
+> **状態: 実装中(P0–P4 実装済み / P5–P9 未着手)** — §9 の実装タスク単位で進行中。実装済み: **P0** 区分リネーム移行、**P1** research 基盤(schemas / repo lease / budget / events / GCS archive)、**P2** コネクタ v1 + fetcher + extract_text、**P3** Harness + フェーズ R0–R6、**P4** 執筆系 R7–R9 + citecheck + Post(report)。未着手: **P5** ジョブ+API+select+Deep Research、**P6** admin Research 画面、**P7** infra(generate-report / OIDC scheduler)、**P8** 評価ハーネス、**P9** 文書化。実コードは `pipeline/app/research/`。実装指示プロンプトは [`docs/prompts/research-agent-implementation.md`](../../prompts/research-agent-implementation.md) にあります。
 
 ---
 

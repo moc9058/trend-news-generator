@@ -19,6 +19,8 @@ dependencies = [
     "tenacity>=8.3",
     "beautifulsoup4>=4.12",
     "python-dotenv>=1.0",
+    "trafilatura>=1.8",  # research: HTML main-text extraction (R4)
+    "pypdf>=4.0",        # research: PDF text extraction (R4)
 ]
 
 [project.optional-dependencies]

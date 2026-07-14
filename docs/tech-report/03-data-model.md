@@ -105,6 +105,8 @@
 | `createdAt` | timestamp | 作成日時(`posts.create()` が付与) | `repo/posts.py` | admin 読(一覧の並び順) |
 | `approvedBy` | string | 承認者のメールアドレス(IAP 認証由来) | api(公開エンドポイント) | admin 読 |
 | `publishedAt` | timestamp / null | 1 チャネル以上成功した時刻 | publish | pipeline のみ(**注: `types.ts` の `Post` には無い**) |
+| `researchRunId` | string | **report のみ**。生成元の `researchRuns/{id}`(監査・再現性の逆参照) | Research Harness R9 | admin 読 |
+| `localizations` | map<lang, {title, summary, body, notionPageId?, url?}> | **report のみ**。ja/ko/en の言語別本文。言語別 Notion 3ページの ID/URL を公開時に格納(doc 10 §6.2) | Harness R9・publish | publish・admin 読 |
 
 #### channels 内の ChannelState(重点解説)
 

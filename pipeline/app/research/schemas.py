@@ -323,6 +323,7 @@ class ResearchRun(BaseModel):
     id: str = ""  # rr_{YYYYMMDD}_{rand6}
     trigger: str = "manual"
     requestedBy: str = ""
+    categoryId: str = ""
     theme: str = ""
     questions: list[str] = []
     depth: str = "standard"
