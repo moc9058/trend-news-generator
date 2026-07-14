@@ -107,6 +107,14 @@ const STATUS_STYLES: Record<string, { dot: string; cls: string }> = {
   failed: { dot: 'bg-red-500', cls: 'bg-red-50 text-red-700 border-red-200' },
   pending: { dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
   skipped: { dot: 'bg-slate-300', cls: 'bg-slate-50 text-slate-400 border-slate-200' },
+  // research run statuses
+  queued: { dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-600 border-slate-200' },
+  running: { dot: 'bg-indigo-500', cls: 'bg-indigo-50 text-indigo-800 border-indigo-200' },
+  awaiting_plan_approval: { dot: 'bg-amber-500', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  awaiting_review: { dot: 'bg-amber-500', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  completed: { dot: 'bg-emerald-500', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  cancelled: { dot: 'bg-slate-400', cls: 'bg-slate-50 text-slate-500 border-slate-200' },
+  budget_exhausted: { dot: 'bg-orange-500', cls: 'bg-orange-50 text-orange-800 border-orange-200' },
 };
 
 export function StatusBadge({ status }: { status: string }) {

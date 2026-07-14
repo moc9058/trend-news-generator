@@ -12,5 +12,6 @@ export PIPELINE_SA="pipeline-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export ADMIN_SA="admin-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 export SCHEDULER_SA="scheduler-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# generate-report (Research Agent) is added by a later phase (see docs 10 §9.1 P5/P7).
-export JOBS=(collect generate-short generate-article cleanup-drafts refresh-threads-token seed)
+# generate-report = Research Agent (docs 10). Deployed with larger memory/timeout
+# and --max-retries=1 (draft-only, lease/resume prevents double-execution).
+export JOBS=(collect generate-short generate-article generate-report cleanup-drafts refresh-threads-token seed)

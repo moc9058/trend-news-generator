@@ -26,11 +26,12 @@ infra/00-bootstrap.sh → 01-secrets.sh → 10-deploy-pipeline.sh → (job-seed 
 
 ## アーキテクチャ
 
-- `pipeline/app/` — 単一 Docker イメージで FastAPI サービス(`main.py` = pipeline-api)と 6 つの Cloud Run Jobs(`jobs/*.py`、`python -m app.jobs.<name>` で起動)を兼ねる
+- `pipeline/app/` — 単一 Docker イメージで FastAPI サービス(`main.py` = pipeline-api)と 7 つの Cloud Run Jobs(`jobs/*.py`、`python -m app.jobs.<name>` で起動。うち `generate_report` = Research Agent、キュー消費+lease)を兼ねる
   - `collectors/` gemini_grounded(グラウンディング検索)・rss(arXiv Atom も rss ソースとして処理)・ieee_xplore・enrich(og:image 取得)
-  - `generators/` short(gpt-5.4-mini、旧 daily)・longform(article の2段階: mini で選定 → gpt-5.5 で長文)。report は Research Agent(`docs/tech-report/05-detailed-design/10-research-agent.md`、後続フェーズ)
+  - `generators/` short(gpt-5.4-mini、旧 daily)・longform(article の2段階: mini で選定 → gpt-5.5 で長文)
+  - `research/` **Research Agent(report フォーマット)= 決定的 Harness + 役割別 LLM フェーズ R0–R9**。`harness.py`(フェーズ遷移・lease・resume・予算・cancel)/ `phases/`(plan→retrieve→triage→extract→verify→gaps→write→localize→critic→handoff)/ `sources/`(kokkai・academic・gov_docs・books・ieee・news・web_grounded・deep_research)/ `fetch/`(SSRF/robots/サイズガード・trafilatura/pypdf 抽出・GCS スナップショット・citecheck)/ `schemas.py` `state.py` `budget.py` `rubric.py` `llm.py`(pydantic 検証+予算計上+監査の唯一の LLM 経路)`prompts.py` `select.py`。設計=`docs/tech-report/05-detailed-design/10-research-agent.md`
   - `publishers/` **公開順は notion → x → threads 固定**(長文ティーザーが Notion 公開URLを必要とするため)。externalId / Threads containerId で冪等
-  - `repo/` Firestore アクセス層。コレクション: `items` `posts` `runs` `categories` `sources` `channelConfigs` `promptTemplates` `settings/{app,channelHealth,notion}`
+  - `repo/` Firestore アクセス層。コレクション: `items` `posts` `runs` `categories` `sources` `channelConfigs` `promptTemplates` `researchRuns`(+サブコレクション evidence/claims/events)`settings/{app,channelHealth,notion}`。`research.py` は本リポジトリ唯一のトランザクション lease(`claim_next`)
   - `config.py` pydantic-settings。モデル名・シークレットは全てここ経由
 - `admin/src/` — Firestore は firebase-admin で直接読み書き(`lib/data.ts` 読み取り、`lib/actions.ts` server actions)。公開・リトライ・ジョブ実行だけ ID トークン付きで pipeline-api を呼ぶ(`lib/pipelineClient.ts`)。認証は IAP(`lib/iap.ts` が `x-goog-authenticated-user-email` を読む)。UI 言語 ko/ja/en(next-intl、デフォルト ko)
 - `shared/constants.json` — Python/TS 共通の enum の唯一のソース。admin は prebuild でコピーするので、変更後は再ビルドが必要
@@ -39,9 +40,10 @@ infra/00-bootstrap.sh → 01-secrets.sh → 10-deploy-pipeline.sh → (job-seed 
 ## 運用上の決定事項(確定済み・再確認不要)
 
 - 区分(旧 cadence)は **成果物フォーマット = short / article / report**(daily→short / weekly→article / monthly→report にリネーム済み)
-- 承認フロー: 短文(short)は自動投稿、記事(article)/レポート(report)は下書き → 管理画面で承認
-- チャネル言語: X=日本語 / Threads=韓国語 / Notion=英語(`channelConfigs` で category×format×channel 単位に変更可)
-- スケジュール(JST): 06:00 collect / 08:00 short(旧 daily)/ 月曜07:00 article(旧 weekly)/ 月曜03:00 Threads トークン更新(旧 monthly は廃止 — レポートの定期実行は後続フェーズで pipeline-api 直呼び)
+- 承認フロー: 短文(short)は自動投稿、記事(article)/レポート(report)は下書き → 管理画面で承認。レポートは調査計画の承認ゲート(`planApproval`)も任意で有効化可
+- チャネル言語: X=日本語 / Threads=韓国語 / Notion=英語(`channelConfigs` で category×format×channel 単位に変更可)。レポートは canonical=ja → ja/ko/en を並行生成
+- レポート予算: 標準 ~$10/本 をハード上限(`budget.usdCap`)。Deep Research 補助は1本1回まで・予算残<$3 で自動スキップ
+- スケジュール(JST): 06:00 collect / 08:00 short / 月曜07:00 article / 毎月1日07:00 report(pipeline-api 直呼び・自動テーマ選定)/ 月曜03:00 Threads トークン更新
 
 ## 落とし穴
 

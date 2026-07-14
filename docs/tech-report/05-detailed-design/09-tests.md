@@ -302,10 +302,10 @@ d = json.load(open('shared/constants.json'))
 for k, v in d.items(): print(f'{k}: {v}')"
 ```
 
-7つのキー(cadences / channels / postStatuses / channelStatuses / sourceTypes / languages / jobTypes)が表示されます。これを次の3か所と照合します。
+キー(formats / channels / postStatuses / channelStatuses / sourceTypes / languages / jobTypes / researchRunStatuses)が表示されます。これを次の3か所と照合します。
 
 1. [../03-data-model.md](../03-data-model.md) の enum 表 — 文書側
-2. `pipeline/app/models.py` の enum クラス(`Cadence` / `Channel` / `PostStatus` / `ChannelStatus` / `SourceType`)と `pipeline/app/main.py` の `JOB_MODULES`(jobTypes に対応)— Python 側は JSON を読み込まず**手で複製されている**ため、値を変えたら両方直す必要があります
+2. `pipeline/app/models.py` の enum クラス(`Format` / `Channel` / `PostStatus` / `ChannelStatus` / `SourceType`)、`pipeline/app/research/schemas.py` の `ResearchRunStatus`(researchRunStatuses に対応)、`pipeline/app/main.py` の `JOB_MODULES`(jobTypes に対応)— Python 側は JSON を読み込まず**手で複製されている**ため、値を変えたら両方直す必要があります
 3. admin 側 — `admin/scripts/sync-constants.mjs` が prebuild で JSON をコピーする仕組みのため、値の変更後は **admin の再ビルドが必要**です
 
 ### 11. 手順5: pytest 実行 / 手順6: Mermaid とリンクの確認
@@ -316,7 +316,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `58 passed`(2026-07-13 時点)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `136 passed`(2026-07-14 時点。うち Research Agent が `tests/research/*` に約78件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden R0→R9 通貫 / API / 失敗パターン §7.3)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

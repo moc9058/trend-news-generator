@@ -34,10 +34,20 @@
 ### Cloud Run 直結 IAP が使えない場合（組織ポリシー等）
 代替: admin-ui を `--allow-unauthenticated` にせず、NextAuth (Google provider) + `moc9058@gmail.com` allowlist を実装して認証を持ち込む。middleware.ts に認証ガードを追加し、`iap.ts` の代わりにセッションから承認者メールを取る。
 
+### Research Agent（レポート）の失敗対応
+実体は `researchRuns/{id}`（status / phase / budget と、サブコレクション evidence/claims/events）。admin の **Research → 実行詳細**でタイムライン・証拠・claims・コストを確認できる。
+
+- **`budget_exhausted` で停止**: 予算上限に達し次フェーズに入れず graceful 停止。部分成果（計画・証拠一覧）は閲覧可能。続きは**新しい run**（予算を上げて）で。同一 run の継続は行わない設計（doc 10 §7.2）
+- **`failed`**: `events` の `ok:false` 行と `error` を確認。多くはコネクタ断か LLM スキーマ不正。**resume**: run は lease 方式なので、`gcloud run jobs execute job-generate-report --region asia-northeast1` で再実行すると `claim_next` が最後の完了フェーズから再開する（全フェーズ冪等）
+- **`running` のまま固まる**: heartbeat が30分超で stale とみなされ、次の job 実行が自動で奪取・再開する。手動なら上記の execute を叩く
+- **コネクタが 429 嵐 / 連続失敗**: 5連続失敗で当該コネクタは run 内で自動無効化（サーキットブレーカ）され、カバレッジに未充足として残る。恒常的なら該当コネクタのキー/クォータを確認
+- **cancel**: admin の「実行をキャンセル」→ `cancelRequested=true`。Harness が次のフェーズ境界で `cancelled` にして停止
+
 ## コスト監視
 
 - ダッシュボードに当月 LLM コスト（runs.costUsd 集計）
-- X 投稿コストの目安: 日次 3件/日 × $0.015 + 週次/月次 URL入り ≈ 月 $5 未満
+- X 投稿コストの目安: 短文 3件/日 × $0.015 + 記事 URL入り ≈ 月 $5 未満
+- **レポート費用**: 1本あたりハード上限 $10（`researchRuns.budget.usdCap`。超過は構造的に不可）。Deep Research を有効化した場合は +~$2/回（1本1回まで）
 - GCP 側は Billing コンソールで budget alert（$30）を設定推奨
 
 ## 区分リネーム移行（cadence → format, P0）

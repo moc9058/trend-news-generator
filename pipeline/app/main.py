@@ -14,6 +14,8 @@ from app.config import get_settings
 from app.models import ChannelStatus, PostStatus
 from app.publishers.base import publish_post
 from app.repo import posts
+from app.repo import research as research_repo
+from app.research.schemas import BudgetState, ResearchRun, ResearchRunStatus
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -23,6 +25,7 @@ JOB_MODULES = {
     "collect": "app.jobs.collect",
     "generate_short": "app.jobs.generate_short",
     "generate_article": "app.jobs.generate_article",
+    "generate_report": "app.jobs.generate_report",
     "cleanup_drafts": "app.jobs.cleanup_drafts",
     "refresh_threads_token": "app.jobs.refresh_threads_token",
     "seed": "app.jobs.seed",
@@ -36,6 +39,24 @@ class PublishRequest(BaseModel):
 
 class RetryRequest(BaseModel):
     channel: str
+
+
+class ResearchRunRequest(BaseModel):
+    # Every field defaults so Cloud Scheduler's empty `{}` body does not 422 (§4.6).
+    theme: str = ""
+    questions: list[str] = []
+    categoryId: str = ""
+    depth: str = "standard"
+    budgetUsd: float = 0.0  # 0 → use the configured default; capped at 30
+    languages: list[str] = ["ja", "ko", "en"]
+    canonicalLanguage: str = "ja"
+    planApproval: bool = False
+    requestedBy: str = ""
+    trigger: str = "manual"
+
+
+class ApprovePlanRequest(BaseModel):
+    approvedBy: str = ""
 
 
 @app.get("/healthz")
@@ -138,3 +159,56 @@ def run_job(name: str) -> dict:
         raise HTTPException(502, f"failed to start {job_name}: {exc}")
     log.info("job triggered", extra={"fields": {"job": job_name}})
     return {"accepted": True, "job": job_name}
+
+
+# --------------------------------------------------------------------------- #
+# Research Agent (report) API — design §4.6. Reads stay in admin (Firestore    #
+# direct); only these state-changing actions go through pipeline-api.          #
+# --------------------------------------------------------------------------- #
+
+@app.post("/api/research/runs", status_code=202)
+def create_research_run(req: ResearchRunRequest) -> dict:
+    settings = get_settings()
+    cap = min(req.budgetUsd, 30.0) if req.budgetUsd > 0 else settings.research_budget_usd_default
+    run = ResearchRun(
+        trigger=req.trigger, requestedBy=req.requestedBy, categoryId=req.categoryId,
+        theme=req.theme, questions=req.questions, depth=req.depth,
+        budget=BudgetState(usdCap=cap, fetchCap=settings.research_max_fetches),
+        languages=req.languages, canonicalLanguage=req.canonicalLanguage,
+        planApproval=req.planApproval, status=ResearchRunStatus.queued.value)
+    run_id = research_repo.create(run)
+    # Contract 2 (§4.6): return 202 even if the trigger fails — the run stays
+    # queued and the next job execution picks it up via claim_next().
+    try:
+        _trigger_job("generate_report")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("generate_report trigger failed; run stays queued",
+                    extra={"fields": {"run": run_id, "error": str(exc)}})
+    return {"runId": run_id, "accepted": True}
+
+
+@app.post("/api/research/runs/{run_id}/cancel")
+def cancel_research_run(run_id: str) -> dict:
+    if research_repo.request_cancel(run_id):
+        return {"status": "cancel_requested"}
+    run = research_repo.get(run_id)
+    if run is None:
+        raise HTTPException(404, "research run not found")
+    raise HTTPException(409, f"research run is {run.status}")
+
+
+@app.post("/api/research/runs/{run_id}/approve-plan")
+def approve_research_plan(run_id: str, req: ApprovePlanRequest) -> dict:
+    run = research_repo.get(run_id)
+    if run is None:
+        raise HTTPException(404, "research run not found")
+    if run.status != ResearchRunStatus.awaiting_plan_approval.value:
+        raise HTTPException(409, f"research run is {run.status}, not awaiting_plan_approval")
+    research_repo.update_fields(run_id, {
+        "planApproved": True, "status": ResearchRunStatus.queued.value})
+    try:
+        _trigger_job("generate_report")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("generate_report trigger failed after approve; run stays queued",
+                    extra={"fields": {"run": run_id, "error": str(exc)}})
+    return {"status": "approved", "approvedBy": req.approvedBy}

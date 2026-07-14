@@ -37,13 +37,17 @@ for job in "${JOBS[@]}"; do
   module="app.jobs.${job//-/_}"
   # Jobs that post from inside the job (generate-short) must NOT retry — a crash
   # mid-publish would double-post. collect/seed are idempotent; generate-report
-  # (added by a later phase) resumes via a Firestore lease, so retrying is safe.
+  # resumes via a Firestore lease, so retrying is safe (docs 10 §6.3).
   retries=0
   [[ "$job" == "collect" || "$job" == "seed" || "$job" == "generate-report" ]] && retries=1
+  # The Research Agent run is long and memory-heavier than the daily jobs.
+  memory=512Mi
+  timeout=1800
+  [[ "$job" == "generate-report" ]] && { memory=1Gi; timeout=3600; }
   gcloud run jobs deploy "job-${job}" \
     --image="$IMAGE" --region="$REGION" \
     --service-account="$PIPELINE_SA" \
-    --memory=512Mi --cpu=1 --max-retries="$retries" --task-timeout=1800 \
+    --memory="$memory" --cpu=1 --max-retries="$retries" --task-timeout="$timeout" \
     --set-env-vars="$COMMON_ENV" \
     --set-secrets="$SECRET_ENV" \
     --command=python --args=-m,"$module"

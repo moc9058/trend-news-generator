@@ -12,6 +12,14 @@ export interface ChannelState {
   pageId?: string;
 }
 
+export interface LocalizedContent {
+  title: string;
+  summary: string;
+  body: string;
+  notionPageId?: string;
+  url?: string;
+}
+
 export interface Post {
   id: string;
   format: string;
@@ -25,6 +33,9 @@ export interface Post {
   channels: Record<string, ChannelState>;
   createdAt: string;
   approvedBy?: string;
+  // report format only
+  researchRunId?: string;
+  localizations?: Record<string, LocalizedContent>;
 }
 
 export interface Category {
@@ -89,4 +100,75 @@ export interface ChannelHealth {
   threadsTokenExpiresAt?: string;
   threadsLastRefreshAt?: string;
   threadsRefreshError?: string;
+}
+
+/* ---------- Research Agent (report) ---------- */
+
+export interface ResearchQuestion {
+  id: string;
+  q: string;
+  strategies: string[];
+  resolved: boolean;
+}
+
+export interface ResearchRun {
+  id: string;
+  trigger: string;
+  requestedBy: string;
+  categoryId: string;
+  theme: string;
+  status: string;
+  phase: string;
+  loops: number;
+  budget?: {
+    usdCap: number;
+    usdSpent: number;
+    fetchCap: number;
+    fetchUsed: number;
+    drCallsUsed: number;
+  };
+  languages: string[];
+  canonicalLanguage: string;
+  planApproval: boolean;
+  planApproved?: boolean;
+  postId?: string;
+  createdAt: string;
+  updatedAt?: string;
+  plan?: { themeClass: string; contested: boolean; rqs: ResearchQuestion[] };
+}
+
+export interface EvidenceRecord {
+  evidenceId: string;
+  tier: string;
+  sourceType: string;
+  title: string;
+  url: string;
+  venue?: string;
+  publishedAt?: string;
+  rqIds?: string[];
+  reliability?: { score: number; rationale?: string };
+}
+
+export interface Claim {
+  claimId: string;
+  rqId: string;
+  text: string;
+  verdict: string;
+  stance?: string;
+  renderAs?: string;
+  confidence?: number;
+  evidenceIds?: string[];
+}
+
+export interface ResearchEvent {
+  id: string;
+  ts: string;
+  phase: string;
+  actor: string;
+  action: string;
+  target?: string;
+  model?: string;
+  costUsd?: number;
+  ok: boolean;
+  error?: string;
 }

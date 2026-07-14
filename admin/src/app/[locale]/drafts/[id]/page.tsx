@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { DraftEditor } from '@/components/DraftEditor';
+import { ReportDraftEditor } from '@/components/ReportDraftEditor';
 import { Chip, StatusBadge } from '@/components/ui';
 import { getPost } from '@/lib/data';
 
@@ -23,7 +24,9 @@ export default async function DraftDetailPage({
           {post.categoryId} · ${post.tokenUsage?.costUsd?.toFixed(3) ?? '0'}
         </span>
       </header>
-      <DraftEditor post={post} />
+      {post.format === 'report' && post.localizations && Object.keys(post.localizations).length > 0
+        ? <ReportDraftEditor post={post} />
+        : <DraftEditor post={post} />}
     </div>
   );
 }

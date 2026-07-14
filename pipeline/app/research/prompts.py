@@ -133,6 +133,17 @@ Return JSON:
   "passed": true/false}}"""
 
 
+SELECT_SYSTEM = """You choose ONE high-value theme for a deep-dive research report
+from a list of recent news items. Pick a theme with lasting significance and enough
+substance for an evidence-based report — not a fleeting story. Return strictly the
+requested JSON."""
+
+SELECT_USER = """Recent items across categories ([category] title):
+{items}
+Return JSON: {{"theme": "a specific, researchable theme in Japanese",
+  "categoryId": "the category slug it best fits", "rationale": "why"}}"""
+
+
 def _version() -> str:
     blob = "".join(v for k, v in sorted(globals().items())
                    if k.endswith(("_SYSTEM", "_USER")) and isinstance(v, str))

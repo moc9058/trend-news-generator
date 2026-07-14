@@ -2,7 +2,8 @@
 
 import { db, toIso } from './firestore';
 import type {
-  AppSettingsDoc, Category, ChannelConfig, ChannelHealth, Post, PromptTemplate, Run, Source,
+  AppSettingsDoc, Category, ChannelConfig, ChannelHealth, Claim, EvidenceRecord, Post,
+  PromptTemplate, ResearchEvent, ResearchRun, Run, Source,
 } from './types';
 
 function mapPost(id: string, data: FirebaseFirestore.DocumentData): Post {
@@ -20,6 +21,8 @@ function mapPost(id: string, data: FirebaseFirestore.DocumentData): Post {
     channels: data.channels ?? {},
     createdAt: toIso(data.createdAt),
     approvedBy: data.approvedBy ?? '',
+    researchRunId: data.researchRunId ?? '',
+    localizations: data.localizations ?? {},
   };
 }
 
@@ -132,4 +135,94 @@ export async function getChannelHealth(): Promise<ChannelHealth> {
     threadsLastRefreshAt: toIso(data.threadsLastRefreshAt),
     threadsRefreshError: data.threadsRefreshError ?? '',
   };
+}
+
+/* ---------- Research Agent (report) — direct Firestore reads ---------- */
+
+function mapResearchRun(id: string, data: FirebaseFirestore.DocumentData): ResearchRun {
+  return {
+    id,
+    trigger: data.trigger ?? 'manual',
+    requestedBy: data.requestedBy ?? '',
+    categoryId: data.categoryId ?? '',
+    theme: data.theme ?? '',
+    status: data.status ?? '',
+    phase: data.phase ?? '',
+    loops: data.loops ?? 0,
+    budget: data.budget,
+    languages: data.languages ?? [],
+    canonicalLanguage: data.canonicalLanguage ?? 'ja',
+    planApproval: data.planApproval ?? false,
+    planApproved: data.planApproved ?? false,
+    postId: data.postId ?? '',
+    createdAt: toIso(data.createdAt),
+    updatedAt: toIso(data.updatedAt),
+    plan: data.plan,
+  };
+}
+
+export async function getResearchRuns(limit = 40): Promise<ResearchRun[]> {
+  const snap = await db().collection('researchRuns')
+    .orderBy('createdAt', 'desc').limit(limit).get();
+  return snap.docs.map((d) => mapResearchRun(d.id, d.data()));
+}
+
+export async function getResearchRun(id: string): Promise<ResearchRun | null> {
+  const snap = await db().collection('researchRuns').doc(id).get();
+  return snap.exists ? mapResearchRun(snap.id, snap.data()!) : null;
+}
+
+export async function getResearchEvidence(runId: string): Promise<EvidenceRecord[]> {
+  const snap = await db().collection('researchRuns').doc(runId).collection('evidence').get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      evidenceId: d.id,
+      tier: data.tier ?? '',
+      sourceType: data.sourceType ?? '',
+      title: data.title ?? '',
+      url: data.url ?? '',
+      venue: data.venue ?? '',
+      publishedAt: data.publishedAt ?? '',
+      rqIds: data.rqIds ?? [],
+      reliability: data.reliability,
+    };
+  });
+}
+
+export async function getResearchClaims(runId: string): Promise<Claim[]> {
+  const snap = await db().collection('researchRuns').doc(runId).collection('claims').get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      claimId: d.id,
+      rqId: data.rqId ?? '',
+      text: data.text ?? '',
+      verdict: data.verdict ?? '',
+      stance: data.stance ?? '',
+      renderAs: data.renderAs ?? '',
+      confidence: data.confidence,
+      evidenceIds: data.evidenceIds ?? [],
+    };
+  });
+}
+
+export async function getResearchEvents(runId: string, limit = 200): Promise<ResearchEvent[]> {
+  const snap = await db().collection('researchRuns').doc(runId).collection('events')
+    .orderBy('ts', 'asc').limit(limit).get();
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ts: toIso(data.ts),
+      phase: data.phase ?? '',
+      actor: data.actor ?? '',
+      action: data.action ?? '',
+      target: data.target ?? '',
+      model: data.model ?? '',
+      costUsd: data.costUsd ?? 0,
+      ok: data.ok ?? true,
+      error: data.error ?? '',
+    };
+  });
 }

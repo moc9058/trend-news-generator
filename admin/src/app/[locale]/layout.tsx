@@ -22,6 +22,7 @@ const NAV_GROUPS: { group: string; items: { href: string; key: string; icon: Ico
     items: [
       { href: '/drafts', key: 'drafts', icon: 'drafts' },
       { href: '/posts', key: 'posts', icon: 'posts' },
+      { href: '/research', key: 'research', icon: 'research' },
     ],
   },
   {

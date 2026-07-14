@@ -111,7 +111,8 @@ flowchart TB
 | `threads-access-token` | Threads 長期アクセストークン(約60日有効) | 必須 | job-generate-short、pipeline-api、job-refresh-threads-token | **あり(毎週月曜 03:00 JST に自動更新)** |
 | `threads-user-id` | 数値文字列 | 必須 | job-generate-short、pipeline-api | なし |
 | `notion-api-key` | `ntn_` / `secret_` で始まるトークン | 必須 | job-generate-short、pipeline-api | なし |
-| `ieee-api-key` | IEEE Xplore API キー | **任意**(空でスキップ可) | job-collect | なし |
+| `ieee-api-key` | IEEE Xplore API キー | **任意**(空でスキップ可) | job-collect / job-generate-report(ieee コネクタ) | なし |
+| `semantic-scholar-api-key` | Semantic Scholar API キー | **任意**(空なら OpenAlex/Crossref にフォールバック) | job-generate-report(academic コネクタ) | なし |
 
 補足:
 
@@ -138,15 +139,16 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 - pipeline-api の役割は、投稿の公開(`/api/posts/{id}/publish`)・チャネル単位のリトライ(`/api/posts/{id}/retry-channel`)・ジョブの手動起動(`/api/jobs/{name}/run`。Cloud Run Jobs を呼ぶのではなく、同じイメージ内のジョブモジュールをプロセス内でバックグラウンド実行する)。
 - admin-ui の `PIPELINE_API_URL` はデプロイ時に pipeline-api の URL を取得して埋め込む。`GCS_BUCKET` は注入されているが**現行の admin コードには参照箇所がない**(将来用ないし残置)。
 
-### 4.2 ジョブ6種
+### 4.2 ジョブ7種
 
-全ジョブ共通: 同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-short → `app.jobs.generate_short`)。レポート生成ジョブ `job-generate-report`(retries=**1** — lease/resume で二重実行を防ぐ)は Research Agent(doc 10)で後続フェーズに追加。
+大半のジョブは同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-short → `app.jobs.generate_short`)。**例外は `job-generate-report`(Research Agent、doc 10)**: 実行が長く重いため `--memory=1Gi --task-timeout=3600`、かつ retries=**1**(draft のみで投稿しない・lease/resume で二重実行を防ぐ。§4.3)。`10-deploy-pipeline.sh` がこのジョブだけ個別に上書きする。
 
 | ジョブ | 役割 | max-retries | 起動元 |
 |---|---|---|---|
 | job-collect | 収集(RSS / arXiv / IEEE Xplore / Gemini グラウンディング+画像取得) | **1** | スケジューラ(毎日 06:00) |
 | job-generate-short | 短文投稿の生成+自動公開 | **0** | スケジューラ(毎日 08:00) |
 | job-generate-article | 記事(長文)の下書き生成 | **0** | スケジューラ(月曜 07:00) |
+| job-generate-report | レポート調査(Research Agent)。キュー消費+lease で researchRuns を処理。1Gi / 3600秒 | **1** | pipeline-api の `_trigger_job`(admin 起動 or 毎月1日 07:00 の scheduled run 経由) |
 | job-cleanup-drafts | 未承認の下書きを30日で自動削除 | **0** | スケジューラ(毎日 04:00) |
 | job-refresh-threads-token | Threads トークンの自動更新 | **0** | スケジューラ(月曜 03:00) |
 | job-seed | 初期データ投入(カテゴリ・ソース・設定の既定値) | **1** | 手動のみ(スケジューラなし) |
@@ -166,7 +168,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ## 5. Cloud Scheduler 表
 
-**Cloud Scheduler** は、決めた時刻に HTTP リクエストを送る GCP のタイマー。`infra/20-schedulers.sh` の `create_sched()` が6本作成する(既存なら更新に切り替わる)。宛先はすべて Cloud Run Jobs の実行 API(`https://run.googleapis.com/v2/.../jobs/<ジョブ名>:run` への POST)。
+**Cloud Scheduler** は、決めた時刻に HTTP リクエストを送る GCP のタイマー。`infra/20-schedulers.sh` が作成する(既存なら更新に切り替わる)。ジョブ直起動の5本は `create_sched()`(宛先 = Cloud Run Jobs 実行 API `https://run.googleapis.com/v2/.../jobs/<名>:run`、scheduler-sa の **OAuth** トークン)。レポートの1本だけは `create_sched_oidc()`(宛先 = pipeline-api の `POST /api/research/runs`、**OIDC** ID トークン。audience = pipeline-api の URL。scheduler-sa に pipeline-api サービスの `run.invoker` を付与)。
 
 **cron 式**は「分 時 日 月 曜日」の5欄で実行タイミングを表す記法(`*` は毎回、曜日の `1` は月曜)。すべて `--time-zone="Asia/Tokyo"` 指定なので JST で読める。
 
@@ -175,8 +177,9 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | sched-collect | `0 6 * * *` | 毎日 06:00 | job-collect | scheduler-sa の OAuth トークン |
 | sched-generate-short | `0 8 * * *` | 毎日 08:00 | job-generate-short | 同上 |
 | sched-generate-article | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-article | 同上 |
-| sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上 |
-| sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上 |
+| sched-generate-report | `0 7 1 * *` | 毎月1日 07:00 | pipeline-api `POST /api/research/runs`(→ job-generate-report) | scheduler-sa の **OIDC** ID トークン(audience = pipeline-api URL) |
+| sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上(OAuth) |
+| sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上(OAuth) |
 
 - 認証は `--oauth-service-account-email` で scheduler-sa の **OAuth アクセストークン**を付ける方式。宛先が Google 自身の API(googleapis.com)の場合は OAuth を使う(自前サービス宛に使う OIDC ID トークンではない)。
 - job-seed に対応するスケジューラは無い(初期投入は1回だけ手動実行)。

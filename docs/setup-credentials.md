@@ -39,7 +39,9 @@
 
 1. https://www.notion.so/my-integrations → **New integration**（対象ワークスペース選択、Read/Insert/Update content）
 2. 「**Trend News**」データベースを作成。必須プロパティ:
-   - `Name`（タイトル）/ `Category`（セレクト）/ `Cadence`（セレクト）/ `Date`(日付)
+   - `Name`（タイトル）/ `Category`（セレクト）/ `Format`（セレクト。short/article/report）/ `Date`(日付)
+   - レポート機能を使う場合は `Language`（セレクト。ja/ko/en）も追加（言語別3ページに付与）。選択肢は初回書込みで自動作成される
+   - ※旧環境から移行する場合は `Cadence`→`Format` のリネーム（`pipeline/scripts/migrate_cadence_to_format.py --notion` または手動 UI）。手順は runbook の「区分リネーム移行」参照
 3. DB ページ右上 **…** → **Connections** → 作成した integration を接続
 4. **Share → Publish** で DB を Web 公開（X/Threads に貼る公開URLのため）
    - ※子ページが公開URLを持つかは最初の週次投稿で要確認。継承されない場合は投稿にURLを含めない運用に切替可（`channels` 設定は不要、リンクは自動で付かなくなるだけ）
@@ -48,10 +50,17 @@
 
 ## 4. OpenAI / Gemini
 
-- OpenAI: https://platform.openai.com → API key 発行。使用モデル: gpt-5.4-mini（日次）/ gpt-5.5（週次・月次）
-- Gemini: https://aistudio.google.com → **Get API key**（Vertex 不要）。Grounding with Google Search は Gemini 3 系で月5,000プロンプト無料（本システムは月 60〜180 回程度）
+- OpenAI: https://platform.openai.com → API key 発行。使用モデル: gpt-5.4-mini（短文・調査の軽量系）/ gpt-5.5（記事・レポートの推論系）。**Deep Research 補助**（レポートのみ・任意）を使う場合は `o4-mini-deep-research`（Responses API, background）へのアクセスが必要。`DEEP_RESEARCH_PROVIDER=openai`（既定）で有効、`off` で無効。1本1回・予算残<$3 で自動スキップ
+- Gemini: https://aistudio.google.com → **Get API key**（Vertex 不要）。Grounding with Google Search は Gemini 3 系で月5,000プロンプト無料。短文収集に加えレポートの `web_grounded`/`gov_docs`/`news` コネクタでも使用
 
-## 5. IEEE Xplore（任意）
+## 5. 学術・議事録・書籍コネクタ（レポート機能・すべて任意/無料）
+
+レポート(report)の調査コネクタは基本キー不要:
+
+- **国会会議録**（`kokkai`）・**e-Gov 法令 / go.jp**（`gov_docs`）・**OpenAlex / Crossref / arXiv**（`academic` のフォールバック）・**Google Books / NDL**（`books`）はキー不要
+- **Semantic Scholar**（`academic` の第1候補）は**任意**でレート上限を上げる API キーを取得可: https://www.semanticscholar.org/product/api → `semantic-scholar-api-key` に登録（`01-secrets.sh`、空でも OpenAlex/Crossref にフォールバックして動作）
+
+## 6. IEEE Xplore（任意）
 
 1. https://developer.ieee.org → アカウント登録 → **Metadata Search API** の API key を申請（無料、~200コール/日）
 2. `01-secrets.sh` で `ieee-api-key` に登録（スキップ可）
@@ -59,7 +68,7 @@
 
 > arXiv は API キー不要です。arXiv API は Atom を返すため `rss` タイプのソースとしてそのまま登録できます（seed 済みの `scitech-arxiv-csai` を有効化するか、`https://export.arxiv.org/api/query?search_query=cat:cs.AI&sortBy=submittedDate&sortOrder=descending&max_results=10` の形式で追加）。
 
-## 6. GCP
+## 7. GCP
 
 課金が有効なプロジェクト `trend-news-generator` を用意し、オーナー権限の gcloud CLI で:
 

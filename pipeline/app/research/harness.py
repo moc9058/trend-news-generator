@@ -62,6 +62,15 @@ class ResearchHarness:
                                         "phase": phase.value})
             repo.heartbeat(run_id)
 
+            # optional plan-approval gate after R1 (design §4.1): pause for admin
+            # sign-off, resuming at R2 once approve-plan re-queues the run.
+            if phase == Phase.R1 and run.planApproval and not run.planApproved:
+                run.phase = Phase.R2.value
+                repo.set_status(run_id, ResearchRunStatus.awaiting_plan_approval.value,
+                                phase=Phase.R2.value)
+                log.info("research run awaiting plan approval", extra={"fields": {"run": run_id}})
+                return ctx
+
             nxt = self._next_phase(phase, ctx)
             if nxt is None:
                 break

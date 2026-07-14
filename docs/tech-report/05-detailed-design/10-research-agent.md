@@ -2,7 +2,7 @@
 
 > 対象コード時点: コミット e93a089(設計時点)/ 最終更新: 2026-07-13
 >
-> **状態: 実装中(P0–P4 実装済み / P5–P9 未着手)** — §9 の実装タスク単位で進行中。実装済み: **P0** 区分リネーム移行、**P1** research 基盤(schemas / repo lease / budget / events / GCS archive)、**P2** コネクタ v1 + fetcher + extract_text、**P3** Harness + フェーズ R0–R6、**P4** 執筆系 R7–R9 + citecheck + Post(report)。未着手: **P5** ジョブ+API+select+Deep Research、**P6** admin Research 画面、**P7** infra(generate-report / OIDC scheduler)、**P8** 評価ハーネス、**P9** 文書化。実コードは `pipeline/app/research/`。実装指示プロンプトは [`docs/prompts/research-agent-implementation.md`](../../prompts/research-agent-implementation.md) にあります。
+> **状態: 実装済み(P0–P9、コード完了・未デプロイ)** — §9 の実装タスク P0–P9 を実装済み。**P0** 区分リネーム移行、**P1** research 基盤、**P2** コネクタ v1 + fetcher + extract_text、**P3** Harness + R0–R6、**P4** 執筆系 R7–R9 + citecheck + Post(report)、**P5** ジョブ+API 3本+select+Deep Research(flag)、**P6** admin Research 画面、**P7** infra(job-generate-report / sched-generate-report OIDC / IAM。スクリプトのみ・未デプロイ)、**P8** 評価(golden R0→R9 通貫 + 失敗パターン §7.3、`pytest 136 passed`)、**P9** 文書。実コードは `pipeline/app/research/` と `admin/src/app/[locale]/research/`。**未実装(繰り越し)**: レポートの言語別3ページ Notion 公開(§6.2 の `_publish_notion(post, post_id)` 拡張)— R9 は下書き Post を作るところまで。本番の migrate/deploy/Notion スキーマ変更は runbook 参照(未実行)。実装指示プロンプトは [`docs/prompts/research-agent-implementation.md`](../../prompts/research-agent-implementation.md)。
 
 ---
 

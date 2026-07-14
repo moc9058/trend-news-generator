@@ -12,6 +12,8 @@ from app.models import TokenUsage
 PRICES = {
     "gpt-5.4-mini": (0.75, 4.50),
     "gpt-5.5": (5.00, 30.00),
+    # Deep Research assist (research report only; ~$2/call in practice, §4.3).
+    "o4-mini-deep-research": (2.00, 8.00),
 }
 
 

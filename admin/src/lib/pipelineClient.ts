@@ -44,3 +44,27 @@ export async function runJob(name: string): Promise<{ ok: boolean; detail: strin
   const text = await resp.text();
   return { ok: resp.ok, detail: text };
 }
+
+/* ---------- Research Agent (report) ---------- */
+
+export async function createResearchRun(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call('/api/research/runs', body);
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+export async function cancelResearchRun(
+  runId: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/research/runs/${runId}/cancel`, {});
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+export async function approveResearchPlan(
+  runId: string,
+  approvedBy: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/research/runs/${runId}/approve-plan`, { approvedBy });
+  return { ok: resp.ok, detail: await resp.text() };
+}

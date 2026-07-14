@@ -7,7 +7,7 @@ strategy list can't send the run to the wrong sources.
 
 from app.config import get_settings
 from app.repo import research as repo
-from app.research import llm
+from app.research import llm, select
 from app.research.context import RunContext
 from app.research.prompts import PLAN_SYSTEM, PLAN_USER, PROMPT_VERSION
 from app.research.schemas import Phase, ResearchPlan
@@ -25,6 +25,8 @@ STRATEGY_MATRIX: dict[str, list[str]] = {
 
 def run(ctx: RunContext) -> None:
     run = ctx.run
+    if not run.theme:  # scheduled run (theme=null) → auto-select first (§4.1)
+        run.theme, run.categoryId = select.select_theme(ctx)
     qblock = ("Existing questions to incorporate:\n" + "\n".join(run.questions)
               if run.questions else "")
     plan: ResearchPlan = llm.structured(

@@ -333,7 +333,8 @@ class ResearchRun(BaseModel):
     status: str = ResearchRunStatus.queued.value
     phase: str = Phase.R0.value
     loops: int = 0
-    planApproval: bool = False
+    planApproval: bool = False   # if true, pause after R1 for admin approval
+    planApproved: bool = False   # set by the approve-plan endpoint
     claimedBy: str = ""
     claimedAt: Optional[datetime] = None
     heartbeatAt: Optional[datetime] = None

@@ -179,3 +179,53 @@ export async function runJobNow(name: string): Promise<ActionResult> {
   revalidatePath('/', 'layout');
   return result;
 }
+
+// ---------- research (report) ----------
+
+/** Save a report draft's per-language content. Only title/summary/body are
+ * written, via dot-path, so publish-time fields (notionPageId/url) on other
+ * languages are never clobbered (design §6.2 / P6). */
+export async function saveReportDraft(formData: FormData): Promise<void> {
+  const id = String(formData.get('id') ?? '');
+  const lang = String(formData.get('lang') ?? '');
+  if (!id || !lang) return;
+  const updates: Record<string, unknown> = {};
+  for (const field of ['title', 'summary', 'body'] as const) {
+    const value = formData.get(field);
+    if (value !== null) updates[`localizations.${lang}.${field}`] = String(value);
+  }
+  if (Object.keys(updates).length === 0) return;
+  await db().collection('posts').doc(id).update(updates);
+  revalidatePath('/', 'layout');
+}
+
+export async function launchResearchRun(formData: FormData): Promise<ActionResult> {
+  const email = await iapUserEmail();
+  const languages = String(formData.get('languages') ?? 'ja,ko,en')
+    .split(',').map((s) => s.trim()).filter(Boolean);
+  const result = await pipeline.createResearchRun({
+    theme: String(formData.get('theme') ?? ''),
+    categoryId: String(formData.get('categoryId') ?? ''),
+    budgetUsd: Number(formData.get('budgetUsd') ?? 0),
+    planApproval: formData.get('planApproval') === 'on',
+    languages,
+    canonicalLanguage: String(formData.get('canonicalLanguage') ?? 'ja'),
+    requestedBy: email,
+    trigger: 'manual',
+  });
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+export async function cancelResearchRun(runId: string): Promise<ActionResult> {
+  const result = await pipeline.cancelResearchRun(runId);
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+export async function approveResearchPlan(runId: string): Promise<ActionResult> {
+  const email = await iapUserEmail();
+  const result = await pipeline.approveResearchPlan(runId, email);
+  revalidatePath('/', 'layout');
+  return result;
+}
