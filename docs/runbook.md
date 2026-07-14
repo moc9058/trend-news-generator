@@ -54,6 +54,8 @@
 
 daily/weekly/monthly を short/article/report に一括変換する一度きりの移行。スクリプトは `pipeline/scripts/migrate_cadence_to_format.py`（既定 dry-run、`--apply`/`--rollback`/`--notion`）。
 
+**推奨: `./deploy.sh --migrate`** が下記1〜10をこの安全な順序（バックアップ→インデックス→**pause**→デプロイ→dry-run→apply→admin→schedulers→resume→孤児削除）で一括実行する。破壊的手順（apply・孤児削除）は確認プロンプトが出る（`--yes` で無人実行）。Python はデフォルトで `pipeline/.venv/bin/python`（`PYTHON=...` で上書き可）を使い、ADC 認証と `pip install -e '.[dev]'` 済みが前提。手動で行う場合の詳細順序は以下:
+
 > **pause は必須**: 旧 Cloud Run ジョブは旧イメージ digest のまま動き続けるため、pause を省略すると「旧コード×移行済みデータ」で `cleanup_drafts` が ValidationError で落ち、旧 `generate-daily` が Notion 400（"Cadence" プロパティ消失）を起こす。
 
 1. **バックアップ**: `gcloud firestore export gs://trend-news-generator-media/backups/pre-format-YYYYMMDD`

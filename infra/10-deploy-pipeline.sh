@@ -16,6 +16,11 @@ SECRET_ENV+=",NOTION_API_KEY=notion-api-key:latest"
 if gcloud secrets describe ieee-api-key >/dev/null 2>&1; then
   SECRET_ENV+=",IEEE_API_KEY=ieee-api-key:latest"
 fi
+# optional: Semantic Scholar key (research academic connector; falls back to
+# OpenAlex/Crossref without it).
+if gcloud secrets describe semantic-scholar-api-key >/dev/null 2>&1; then
+  SECRET_ENV+=",SEMANTIC_SCHOLAR_API_KEY=semantic-scholar-api-key:latest"
+fi
 
 COMMON_ENV="PROJECT_ID=${PROJECT_ID},REGION=${REGION},GCS_BUCKET=${BUCKET},PIPELINE_SERVICE_ACCOUNT=${PIPELINE_SA}"
 

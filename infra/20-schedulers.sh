@@ -69,4 +69,16 @@ create_sched sched-threads-refresh    "0 3 * * 1"  job-refresh-threads-token
 # is picked up by job-generate-report.
 create_sched_oidc sched-generate-report "0 7 1 * *" "/api/research/runs"
 
-echo "schedulers created (Asia/Tokyo): 06:00 collect / 08:00 short / Mon 07:00 article / 1st 07:00 report / 04:00 cleanup drafts / Mon 03:00 token refresh"
+# `gcloud scheduler jobs update` does NOT un-pause an existing scheduler, so one
+# left PAUSED (by a migration's pause step, or a manual pause) would otherwise
+# stay paused after this script. Ensure every scheduler we manage ends ENABLED.
+echo "--- ensuring all schedulers enabled"
+ACTIVE_SCHEDS=(sched-collect sched-generate-short sched-generate-article \
+               sched-generate-report sched-cleanup-drafts sched-threads-refresh)
+for s in "${ACTIVE_SCHEDS[@]}"; do
+  gcloud scheduler jobs resume "$s" --location="$REGION" -q >/dev/null 2>&1 \
+    && echo "  enabled $s" \
+    || echo "  (skip $s — not found or already enabled)"
+done
+
+echo "schedulers created & enabled (Asia/Tokyo): 06:00 collect / 08:00 short / Mon 07:00 article / 1st 07:00 report / 04:00 cleanup drafts / Mon 03:00 token refresh"
