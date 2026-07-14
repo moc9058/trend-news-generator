@@ -8,7 +8,7 @@ const LOCALES = [
   { code: 'en', label: 'English', short: 'EN' },
 ];
 
-export function LocaleSwitcher({ current }: { current: string }) {
+export function LocaleSwitcher({ current, expanded }: { current: string; expanded?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -19,7 +19,11 @@ export function LocaleSwitcher({ current }: { current: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-1 rounded-lg bg-ink-raise/60 p-1 lg:flex-row">
+    <div
+      className={`flex gap-1 rounded-lg bg-ink-raise/60 p-1 ${
+        expanded ? 'flex-row' : 'flex-col lg:flex-row'
+      }`}
+    >
       {LOCALES.map((l) => (
         <button
           key={l.code}
@@ -31,8 +35,8 @@ export function LocaleSwitcher({ current }: { current: string }) {
               : 'text-ink-muted hover:text-white'
           }`}
         >
-          <span className="lg:hidden">{l.short}</span>
-          <span className="hidden lg:inline">{l.label}</span>
+          <span className={expanded ? 'hidden' : 'lg:hidden'}>{l.short}</span>
+          <span className={expanded ? 'inline' : 'hidden lg:inline'}>{l.label}</span>
         </button>
       ))}
     </div>

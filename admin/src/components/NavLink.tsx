@@ -9,12 +9,15 @@ export function NavLink({
   icon,
   label,
   exact,
+  expanded,
 }: {
   href: string;
   icon: IconName;
   label: string;
   /** Match only the exact path (for the dashboard root). */
   exact?: boolean;
+  /** Always show the label (mobile drawer), rather than only from lg up. */
+  expanded?: boolean;
 }) {
   const pathname = usePathname();
   const active = exact ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
@@ -30,14 +33,18 @@ export function NavLink({
       }`}
     >
       {active && (
-        <span className="absolute -left-3 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent lg:-left-4" />
+        <span
+          className={`absolute top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-accent ${
+            expanded ? '-left-4' : '-left-3 lg:-left-4'
+          }`}
+        />
       )}
       <Icon
         name={icon}
         size={16}
         className={`shrink-0 ${active ? 'text-accent-line' : 'text-ink-faint group-hover:text-ink-muted'}`}
       />
-      <span className="hidden truncate lg:block">{label}</span>
+      <span className={`truncate ${expanded ? 'block' : 'hidden lg:block'}`}>{label}</span>
     </Link>
   );
 }
