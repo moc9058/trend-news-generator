@@ -53,7 +53,7 @@ create_sched_oidc() {
     --location="$REGION" \
     --schedule="$cron" --time-zone="Asia/Tokyo" \
     --uri="$uri" --http-method=POST \
-    --headers="Content-Type=application/json" --message-body='{"trigger":"scheduled"}' \
+    --update-headers="Content-Type=application/json" --message-body='{"trigger":"scheduled"}' \
     --oidc-service-account-email="$SCHEDULER_SA" \
     --oidc-token-audience="$PIPELINE_API_URL"
 }

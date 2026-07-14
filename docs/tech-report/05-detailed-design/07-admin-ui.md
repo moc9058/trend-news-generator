@@ -14,7 +14,7 @@
 |---|---|---|
 | `admin/` | `package.json` | npm スクリプト定義(`dev` / `prebuild` / `build` / `typecheck`) |
 | | `next.config.mjs` | Next.js 設定(`standalone` 出力、next-intl プラグイン) |
-| | `Dockerfile` | 2 ステージビルド(node:22-slim、ポート 8080) |
+| | `Dockerfile` | 2 ステージビルド(node:24-slim、ポート 8080) |
 | `admin/scripts/` | `sync-constants.mjs` | `shared/constants.json` を `src/lib/` へコピー(prebuild) |
 | `admin/messages/` | `ko.json` `ja.json` `en.json` | UI 文言の翻訳ファイル(画面ごとの名前空間) |
 | `admin/src/` | `middleware.ts` | 全リクエストに言語プレフィックスを付ける入口処理 |
