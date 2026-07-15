@@ -6,11 +6,11 @@
 ## コマンド
 
 ```bash
-# pipeline (Python 3.12)
+# pipeline (Python 3.12) — ローカルは uv で仮想環境に隔離(素の pip/python は使わない)
 cd pipeline
-pip install -e ".[dev]"
-pytest                              # pytest + pytest-asyncio(asyncio_mode=auto) + respx
-python -m app.jobs.collect          # 単発実行(ADC + .env が必要。cp .env.example .env)
+uv venv && uv pip install -e ".[dev]"   # .venv を作成(deploy.sh の pick_python が自動検出)
+uv run pytest                           # pytest + pytest-asyncio(asyncio_mode=auto) + respx
+uv run python -m app.jobs.collect       # 単発実行(ADC + .env が必要。cp .env.example .env)
 
 # admin (Next.js 15 / React 19 / TypeScript)
 cd admin

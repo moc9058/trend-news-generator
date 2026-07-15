@@ -236,7 +236,7 @@ flowchart LR
 
 ### 5.1 pipeline/Dockerfile — 1 イメージ 7 役の単純構成
 
-ベースは `python:3.12-slim`(Python 3.12 入りの最小限 Linux)。作業ディレクトリ `/srv` で、`PYTHONUNBUFFERED=1`(ログをためずに即出力 → Cloud Logging にリアルタイムで届く)と `PIP_NO_CACHE_DIR=1`(pip のキャッシュを残さずイメージを小さく)を設定します。`pyproject.toml` と `app/` をコピーして `pip install .` で依存ごとインストール — レイヤーキャッシュの最適化(依存だけ先に入れる)はせず、読みやすさ優先の 1 発インストールです。
+ベースは `python:3.12-slim`(Python 3.12 入りの最小限 Linux)。作業ディレクトリ `/srv` で `PYTHONUNBUFFERED=1`(ログをためずに即出力 → Cloud Logging にリアルタイムで届く)を設定します。インストーラは素の `pip` ではなく **uv**(`ghcr.io/astral-sh/uv` から `/uv` バイナリを COPY してピン留め)。`pyproject.toml` と `app/` をコピーして `uv pip install --system .` で依存ごとインストールします — `--system` はコンテナのインタプリタへ直接入れる指定(venv 不要)、`UV_NO_CACHE=1` でキャッシュを残さずイメージを小さく保ちます。素の `pip install` が root 実行時に出す "running pip as root" / "upgrade pip" の警告が消え、Cloud Build も速くなります。レイヤーキャッシュの最適化(依存だけ先に入れる)はせず、読みやすさ優先の 1 発インストールです。
 
 最後の `CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]` が肝です。CMD は「コンテナ起動時の既定コマンド」で、既定では **uvicorn(Python の Web サーバー)で FastAPI アプリ = pipeline-api を起動**します。`sh -c` を挟むのは `${PORT:-8080}`(Cloud Run が注入する PORT 環境変数、無ければ 8080)を展開するためです。一方ジョブとしてデプロイするときは、4.3 で見たとおり `--command=python --args=-m,app.jobs.<name>` がこの CMD を**丸ごと上書き**します。つまり「既定 = API サーバー、上書き = バッチ」という 1 イメージ 7 役の構成で、Dockerfile 内のコメントにもその旨が書かれています。イメージが 1 つなので、API とジョブでコードのバージョンがずれる事故が起きません。
 

@@ -23,22 +23,22 @@ cd pipeline
 リポジトリ内の `pipeline` ディレクトリへ移動します。以降のコマンドはここで実行します。
 
 ```bash
-pip install -e ".[dev]"
+uv venv && uv pip install -e ".[dev]"
 ```
-初回のみ。pipeline 本体と、テスト用の追加ライブラリ(`pyproject.toml` の `[project.optional-dependencies]` にある dev グループ: pytest / pytest-asyncio / respx)をインストールします。`-e` は「編集可能モード」で、コードを直したら再インストールなしで反映されます。
+初回のみ。`uv venv` で `.venv` を作り(ローカルは素の pip/python ではなく uv で仮想環境に隔離する)、pipeline 本体とテスト用の追加ライブラリ(`pyproject.toml` の `[project.optional-dependencies]` にある dev グループ: pytest / pytest-asyncio / respx)をインストールします。`-e` は「編集可能モード」で、コードを直したら再インストールなしで反映されます。
 
 ```bash
-pytest
+uv run pytest
 ```
 全テストを実行します。設定(`pyproject.toml` の `[tool.pytest.ini_options]`)により `tests/` ディレクトリが自動で対象になります。
 
 ```bash
-pytest tests/test_oauth1.py
+uv run pytest tests/test_oauth1.py
 ```
 1ファイルだけ実行する例。署名ロジックを触ったときは最低限これを回します(4章参照)。
 
 ```bash
-pytest -v -k "notion"
+uv run pytest -v -k "notion"
 ```
 `-v` はテスト名を1行ずつ表示、`-k` は名前に指定文字列を含むテストだけを選んで実行します。
 
