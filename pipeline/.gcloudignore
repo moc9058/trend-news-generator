@@ -1,0 +1,25 @@
+# What `gcloud builds submit ../pipeline` UPLOADS (infra/10-deploy-pipeline.sh).
+#
+# This file is the only thing that trims the upload. gcloud ignores .dockerignore
+# here, and it auto-generates rules from .gitignore only when one sits in the
+# source directory — ours is at the repo root, which gcloud never looks at. With
+# no .gcloudignore, every deploy shipped 301 MiB / ~11.5k files, ~240MB of it the
+# local .venv. (.dockerignore still governs the docker build context inside Cloud
+# Build, so both files are needed and their contents overlap.)
+#
+# The image only ever COPYs pyproject.toml and app/ — see Dockerfile.
+.gcloudignore
+.git/
+.gitignore
+
+# The local uv virtualenv: the bulk of the upload, built against the host's
+# interpreter, and never used by the image (it installs with `uv pip install --system`).
+.venv/
+uv.lock
+
+tests/
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
