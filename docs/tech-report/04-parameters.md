@@ -191,16 +191,18 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 **cron 式**は「分 時 日 月 曜日」の5欄で実行タイミングを表す記法(`*` は毎回、曜日の `1` は月曜)。すべて `--time-zone="Asia/Tokyo"` 指定なので JST で読める。
 
-| スケジューラ名 | cron 式 | JST での意味 | 起動するジョブ | 認証方式 |
-|---|---|---|---|---|
-| sched-collect | `0 6 * * *` | 毎日 06:00 | job-collect | scheduler-sa の OAuth トークン |
-| sched-generate-short | `0 8 * * *` | 毎日 08:00 | job-generate-short | 同上 |
-| sched-generate-article | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-article | 同上 |
-| sched-generate-report | `0 7 1 * *` | 毎月1日 07:00 | pipeline-api `POST /api/research/runs`(→ job-generate-report) | scheduler-sa の **OIDC** ID トークン(audience = pipeline-api URL) |
-| sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上(OAuth) |
-| sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上(OAuth) |
+| スケジューラ名 | cron 式 | JST での意味 | 起動するジョブ | 認証方式 | 実行状態 |
+|---|---|---|---|---|---|
+| sched-collect | `0 6 * * *` | 毎日 06:00 | job-collect | scheduler-sa の OAuth トークン | ENABLED |
+| sched-generate-short | `0 8 * * *` | 毎日 08:00 | job-generate-short | 同上 | ENABLED |
+| sched-generate-article | `0 7 * * 1` | 毎週月曜 07:00 | job-generate-article | 同上 | ENABLED |
+| sched-generate-report | `0 7 1 * *` | 毎月1日 07:00 | pipeline-api `POST /api/research/runs`(→ job-generate-report) | scheduler-sa の **OIDC** ID トークン(audience = pipeline-api URL) | ENABLED |
+| sched-cleanup-drafts | `0 4 * * *` | 毎日 04:00 | job-cleanup-drafts | 同上(OAuth) | ENABLED |
+| sched-threads-refresh | `0 3 * * 1` | 毎週月曜 03:00 | job-refresh-threads-token | 同上(OAuth) | **PAUSED**(下記) |
 
 - 認証は `--oauth-service-account-email` で scheduler-sa の **OAuth アクセストークン**を付ける方式。宛先が Google 自身の API(googleapis.com)の場合は OAuth を使う(自前サービス宛に使う OIDC ID トークンではない)。
+- **実行状態(ENABLED/PAUSED)はスクリプトが唯一のソース**。`infra/20-schedulers.sh` 末尾の `ACTIVE_SCHEDS` / `PAUSED_SCHEDS` の2配列が宣言で、スクリプトは毎回どちらかへ強制的に寄せる(`gcloud scheduler jobs update` は実行状態を変えないため、resume/pause を明示的に呼ぶ)。**コンソールや gcloud で手動 pause/resume しても次の `./deploy.sh` で宣言どおりに戻る** — 恒久的に変えたいときは配列間で名前を移すこと(env の全置換と同じ思想)。
+- `sched-threads-refresh` が PAUSED な理由: X/Threads を運用していない(Notion 専用モード)ため。トークンはプレースホルダのままなので、動かしても毎週失敗が `runs` に積まれるだけになる。再開するには `PAUSED_SCHEDS` から `ACTIVE_SCHEDS` へ移して再デプロイ。スケジューラ自体は作成されたまま残る。
 - job-seed に対応するスケジューラは無い(初期投入は1回だけ手動実行)。
 - 時刻設計の意図: 06:00 収集 → 08:00 短文生成(直近36時間の収集アイテムを利用)。記事は生成しても下書き止まりで、公開は管理画面での承認後(フォーマット=short/article/report ごとの承認フローは §7)。
 

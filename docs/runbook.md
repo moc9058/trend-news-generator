@@ -24,6 +24,12 @@
 - **公開済み投稿の削除**: Posts ページのチェックボックスで複数選択して削除(投稿ごと削除)、または投稿詳細ページでチャネル単位に削除。実体は pipeline-api の `POST /api/posts/{id}/delete` — X ツイート/Threads メディアは削除、Notion ページはアーカイブ(report の言語別ページ含む)。**X のスレッド投稿は先頭ツイートしか消えない**(返信ツイートは X 上で手動削除)
 - **チャネルを全カテゴリで止める**: Settings のグローバルチャネルスイッチ(`settings/app.globalChannels`、既定 X=off / Threads=off / Notion=on)。カテゴリ別 channelConfigs と AND で効き、次の生成から反映(既公開の投稿には影響しない)
 
+### スケジューラを止めたい / 再開したい
+**コンソールや `gcloud scheduler jobs pause` での手動操作は永続しません** — `./deploy.sh` が毎回 `infra/20-schedulers.sh` を実行し、`ACTIVE_SCHEDS`(resume)/ `PAUSED_SCHEDS`(pause)の宣言どおりに強制的に戻します。恒久的に変えるには**スクリプトの配列間で名前を移して再デプロイ**すること(env の全置換と同じ思想)。
+
+- 現在 `PAUSED_SCHEDS` にあるのは `sched-threads-refresh` のみ(X/Threads 未運用・トークンはプレースホルダのため、動かすと毎週失敗が積まれるだけ)。X/Threads を再開するときは `ACTIVE_SCHEDS` へ戻す
+- 緊急停止(次のデプロイまでの一時措置でよい場合)は手動 pause でよいが、**デプロイすると復活する**ことを前提に
+
 ### Threads トークン
 - ダッシュボードに赤バナー（refresh 失敗）または期限14日未満 → 手動リフレッシュ: Settings → `refresh_threads_token` **今すぐ実行**
 - 完全失効した場合: docs/setup-credentials.md §2 の手順で再OAuth → `gcloud secrets versions add threads-access-token --data-file=-`

@@ -194,13 +194,16 @@ flowchart LR
 
 作られる 6 本の対応(cron 値と時刻の正は [../04-parameters.md](../04-parameters.md)):
 
-| スケジューラ | 起動するジョブ |
-|---|---|
-| `sched-collect` | `job-collect`(毎日の収集) |
-| `sched-generate-daily` | `job-generate-daily`(毎日の短文生成・自動投稿) |
-| `sched-generate-weekly` | `job-generate-weekly`(週次下書き) |
-| `sched-generate-monthly` | `job-generate-monthly`(月次下書き) |
-| `sched-threads-refresh` | `job-refresh-threads-token`(Threads トークン更新) |
+| スケジューラ | 起動するジョブ | 実行状態 |
+|---|---|---|
+| `sched-collect` | `job-collect`(毎日の収集) | ENABLED |
+| `sched-generate-short` | `job-generate-short`(毎日の短文生成・自動投稿) | ENABLED |
+| `sched-generate-article` | `job-generate-article`(週次の記事下書き) | ENABLED |
+| `sched-generate-report` | pipeline-api `POST /api/research/runs`(→ `job-generate-report`)。**この1本だけ OIDC** | ENABLED |
+| `sched-cleanup-drafts` | `job-cleanup-drafts`(古い下書きの削除) | ENABLED |
+| `sched-threads-refresh` | `job-refresh-threads-token`(Threads トークン更新) | **PAUSED** |
+
+**実行状態の宣言(末尾の照合ループ)** — スクリプト末尾に `ACTIVE_SCHEDS` と `PAUSED_SCHEDS` の2配列があり、前者を `resume`、後者を `pause` で**毎回強制的に宣言どおりへ寄せます**。なぜ必要かというと、`gcloud scheduler jobs update`(上記の create||update パターン)は cron や宛先は変えても**実行状態(ENABLED/PAUSED)には触れない**ためで、放っておくと「移行手順の pause ステップで止めたまま」「手で止めたまま」の状態が残り続けます。逆に言えば **コンソールでの手動 pause/resume は次の `./deploy.sh` で宣言に上書きされて消えます** — `--set-env-vars` が env を全置換するのと同じ「スクリプトが唯一のソース」という思想です。恒久的に止めたいものは `PAUSED_SCHEDS` へ名前を移すのが唯一の正しいやり方です(現在は `sched-threads-refresh` が該当。X/Threads 未運用のため。→ [../../runbook.md](../../runbook.md))。
 
 `job-seed` にはスケジューラが**ありません**。初期データ投入は一度きりの手動実行(`gcloud run jobs execute job-seed --region asia-northeast1 --wait`)だからです。なお、冒頭で取得している `PROJECT_NUMBER` は現在のスクリプト内では**使われていない変数**です(v2 API の URL がプロジェクト ID で組み立てられるため不要になった名残と見られます)。動作に影響はありませんが、読解時に「どこで使うのか」と探して迷わないよう記しておきます。
 

@@ -93,8 +93,11 @@ gcloud config set project "$PROJECT_ID" >/dev/null
 
 # ---- migration helpers -------------------------------------------------------
 
-# Old cadence-era resources to pause/delete during the rename. (Resuming/enabling
-# is handled by 20-schedulers.sh, which ensures ALL schedulers end ENABLED.)
+# Old cadence-era resources to pause/delete during the rename. (Resuming is handled
+# by 20-schedulers.sh, which reconciles every scheduler to the run state declared
+# in its ACTIVE_SCHEDS/PAUSED_SCHEDS lists. All of OLD_SCHEDS are in ACTIVE_SCHEDS,
+# so the pause below is undone there; a scheduler meant to stay paused across
+# deploys belongs in PAUSED_SCHEDS.)
 OLD_SCHEDS=(sched-collect sched-generate-daily sched-generate-weekly \
             sched-generate-monthly sched-cleanup-drafts)
 ORPHAN_SCHEDS=(sched-generate-daily sched-generate-weekly sched-generate-monthly)

@@ -69,16 +69,28 @@ create_sched sched-threads-refresh    "0 3 * * 1"  job-refresh-threads-token
 # is picked up by job-generate-report.
 create_sched_oidc sched-generate-report "0 7 1 * *" "/api/research/runs"
 
-# `gcloud scheduler jobs update` does NOT un-pause an existing scheduler, so one
-# left PAUSED (by a migration's pause step, or a manual pause) would otherwise
-# stay paused after this script. Ensure every scheduler we manage ends ENABLED.
-echo "--- ensuring all schedulers enabled"
+# Run/pause state is DECLARED here, not left to whatever the console happens to
+# hold: every ./deploy.sh re-runs this script, so any state not declared below
+# drifts back on the next deploy. `gcloud scheduler jobs update` changes neither
+# state, so each scheduler is explicitly resumed or paused.
+echo "--- reconciling scheduler run state"
 ACTIVE_SCHEDS=(sched-collect sched-generate-short sched-generate-article \
-               sched-generate-report sched-cleanup-drafts sched-threads-refresh)
+               sched-generate-report sched-cleanup-drafts)
+# Paused on purpose. sched-threads-refresh rotates the Threads token, but X and
+# Threads are unused (Notion-only mode) and the token is a placeholder, so it can
+# only fail weekly into `runs`. It stays created — flip it back by moving the name
+# to ACTIVE_SCHEDS (not by un-pausing in the console, which the next deploy undoes).
+PAUSED_SCHEDS=(sched-threads-refresh)
+
 for s in "${ACTIVE_SCHEDS[@]}"; do
   gcloud scheduler jobs resume "$s" --location="$REGION" -q >/dev/null 2>&1 \
     && echo "  enabled $s" \
     || echo "  (skip $s — not found or already enabled)"
 done
+for s in "${PAUSED_SCHEDS[@]}"; do
+  gcloud scheduler jobs pause "$s" --location="$REGION" -q >/dev/null 2>&1 \
+    && echo "  paused  $s (declared PAUSED_SCHEDS)" \
+    || echo "  (skip $s — not found or already paused)"
+done
 
-echo "schedulers created & enabled (Asia/Tokyo): 06:00 collect / 08:00 short / Mon 07:00 article / 1st 07:00 report / 04:00 cleanup drafts / Mon 03:00 token refresh"
+echo "schedulers reconciled (Asia/Tokyo). ENABLED: 06:00 collect / 08:00 short / Mon 07:00 article / 1st 07:00 report / 04:00 cleanup drafts. PAUSED: Mon 03:00 threads token refresh"
