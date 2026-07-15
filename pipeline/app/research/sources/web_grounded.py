@@ -7,6 +7,8 @@ tier). These are the general-web leg; specific-domain connectors (kokkai, e-Gov
 法令 API direct, …) are preferred where they exist (§4.2 matrix).
 """
 
+import threading
+
 from google import genai
 from google.genai import types
 
@@ -78,15 +80,21 @@ class GroundedConnector:
         self._client = client or genai.Client(api_key=get_settings().gemini_api_key)
         self._consecutive_failures = 0
         self.disabled = False
+        # M2: gather workers may hit one connector instance from several threads.
+        # google-genai does not document its sync client as thread-safe, so each
+        # instance serialises its own calls (plan §5.4's fallback). Distinct
+        # grounded connectors (web/gov_docs/news) still run in parallel.
+        self._gen_lock = threading.Lock()
 
     def search(self, q: StrategyQuery) -> list[SourceHit]:
         if self.disabled:
             return []
         try:
-            hits = grounded_search(
-                self._client, q.query,
-                self.default_site_filters + list(q.siteFilters),
-                self.source_type, self.tier_hint, self.name, q.maxResults)
+            with self._gen_lock:
+                hits = grounded_search(
+                    self._client, q.query,
+                    self.default_site_filters + list(q.siteFilters),
+                    self.source_type, self.tier_hint, self.name, q.maxResults)
             self._consecutive_failures = 0
             return hits
         except Exception as exc:  # noqa: BLE001 — non-fatal

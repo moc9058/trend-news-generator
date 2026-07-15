@@ -27,6 +27,6 @@ def review_node(state: ResearchState, runtime: Runtime[ResearchRuntimeContext]) 
     # lived in memory, so a crash reset it and could grant an extra rewrite; it is
     # a channel now and survives in the checkpoint.
     if ctx.review_decision == "revise":
-        return Command(goto="write",
+        return Command(goto="write_canonical",
                        update=state_delta(ctx, revisions=state.get("revisions", 0) + 1))
     return Command(goto=END, update=state_delta(ctx))

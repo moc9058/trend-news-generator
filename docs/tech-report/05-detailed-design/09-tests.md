@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット c6427a7 + 未コミット変更 / 最終更新: 2026-07-15(**M1: test_graph_golden.py / test_checkpointer_firestore.py / test_runner.py / tests/research/conftest.py** / M0-c: test_deep_research_enablement.py / M0-b: test_prompts.py・test_trusted_source_invariants.py / M0-a: conftest.py・test_observability.py / Research Chat: `tests/chat/` 9ファイル84件)
+> 対象コード時点: コミット f192157 + 未コミット変更 / 最終更新: 2026-07-15(**M2: test_parallel_safety.py + golden の fan-out 2件** / M1: test_graph_golden.py / test_checkpointer_firestore.py / test_runner.py / tests/research/conftest.py / M0-c: test_deep_research_enablement.py / M0-b: test_prompts.py・test_trusted_source_invariants.py / M0-a: conftest.py・test_observability.py / Research Chat: `tests/chat/` 9ファイル84件)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 15ファイル + `tests/chat/` 9ファイル、計317件・2026-07-15時点)をどう実行し、結果をどう読むか
+- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 16ファイル + `tests/chat/` 9ファイル、計328件・2026-07-15時点)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -45,10 +45,10 @@ uv run pytest -v -k "notion"
 **出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。2026-07-15 時点のコードでは全件成功し、次のようになります(所要 6〜7 秒)。
 
 ```text
-317 passed, 2 warnings in 9.36s
+328 passed, 2 warnings in 10.79s
 ```
 
-- `317 passed` — 317件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `328 passed` — 328件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -246,7 +246,7 @@ uv run pytest -v -k "notion"
 | `test_system_prompts_have_no_unresolved_placeholders()` | `*_SYSTEM` は無加工で送られるため `{placeholder}` が残っていない(`LOCALIZE_SYSTEM` のみ例外) |
 | `test_prompt_version_reflects_prompt_changes()` | プロンプトを変えれば `PROMPT_VERSION` が変わる(定義時補間の担保。§6.5 の罠) |
 
-#### test_graph_golden.py(14件)— グラフ通貫 【最重要級】
+#### test_graph_golden.py(16件)— グラフ通貫 【最重要級】
 
 対象: **パイプライン全体**(`app/research/graph/` の実グラフを、LLM/コネクタ/Fetcher/GCS/Firestore だけ偽物にして通貫実行)。**M1 で `test_harness_golden.py` から移植した際、既存のアサーションを1つも変えていない** — 変えずに通ることが「LangGraph 移行で挙動が変わっていない」ことの証明そのものです([10-research-agent.md](10-research-agent.md) §8.2)。共通の偽物は `tests/research/conftest.py` の `drive()` にまとめてあり、本番と同じノード・同じ経路・同じチェックポインタ契約を通ります。
 
@@ -264,6 +264,8 @@ uv run pytest -v -k "notion"
 | `test_awaiting_approval_run_retriggered_without_approval_stays_paused()` | 未承認のままジョブを再実行してもゲートを抜けられない |
 | **`test_crash_after_write_resumes_review_with_draft()`** | **空 Post バグの回帰テスト**(§8.2)。review でクラッシュ→再開しても draft が生きており、Post は1つだけ・本文は非空 |
 | `test_cancel_between_supersteps()` | superstep 境界で cancel を拾って停止し、Post を作らない |
+| `test_fanout_single_phase_event_pair()` | **M2**: 3 RQ × 3 コネクタ = 9 worker に扇形展開しても phase_start/end は各フェーズ1組。worker が**実際に複数スレッド**で走ったことも固定 |
+| `test_claims_buffer_reset_on_second_verify_pass()` | **M2**: verify→gather ループ2周目で claims が積み増しにならない(dispatch の RESET。外した変異で落ちることを確認済み) |
 | `test_golden_run_through_the_firestore_checkpointer()` | 偽 Firestore 上の**実チェックポインタ**で通貫し、成功後にスレッドが消えている |
 | `test_crash_resume_through_the_firestore_checkpointer()` | 同上でクラッシュ→チェックポイントが残る→再開して完走 |
 
@@ -280,6 +282,21 @@ uv run pytest -v -k "notion"
 対象: `app/research/graph/runner.py`(グラフはスタブ)。グラフの外側の判断だけを切り出して検証します。
 
 主な内容: 入力決定マトリクス(新規=初期 state / interrupt 待ち+承認済み=`Command(resume=True)` / 未承認=グラフを回さず再 pause / クラッシュ=`None` で続行 / チェックポイント無しの旧 run=先頭から)/ 予算の max マージ / superstep の run ドキュメントへの投影(`plan_gate`・`budget_stop` は投影しない)/ 開始前 cancel はグラフに触れない / `awaiting_review` を確認できたときだけ `delete_thread`、後始末の失敗は握り潰す / `durability="sync"` と LangSmith 用 metadata の指定。
+
+#### test_parallel_safety.py(9件)— M2 並列 fan-out の安全性
+
+対象: worker スレッドが共有する可変物すべて(`budget.py` / `fetch/fetcher.py` / grounded コネクタ / `graph/state.py` の reducer)。実スレッドで競合させ、**厳密な数値**を要求します(「たまに通る」はロックが守るべき失敗モードそのもの)。autouse fixture が `sys.setswitchinterval(1e-6)` で GIL 切替を強制します — 既定の 5ms では read-modify-write 全体が1クォンタムに収まり、**ロックを外した変異でも通ってしまう**ことを作成時に確認したためです(逆に強制下では Budget/fetcher/grounded の各ロック除去がそれぞれ対応テストを確実に落とす — 変異注入で検証済み)。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_budget_try_note_fetch_atomic_under_threads()` | fetch 枠 10 に 32 スレッドが殺到 → 成功はちょうど 10 |
+| `test_budget_charge_concurrent_sum_exact()` / `..._charge_llm_...` | 並列課金の合計が厳密一致(消失した課金 = キャップ崩壊) |
+| `test_budget_snapshot_is_a_detached_copy()` | チェックポイント用スナップショットが以後の課金と独立 |
+| `test_fetcher_same_host_serialized_cross_host_parallel()` | 同一ホストの GET は決して重ならず(1 req/s 約束)、別ホストは実際に並列 |
+| `test_fetcher_rate_gap_still_enforced_per_host()` | ロック改修後も 1 秒間隔の待ちが入る(clock/sleep 注入) |
+| `test_fetcher_domain_cap_exact_under_threads()` | `MAX_PER_DOMAIN`(10)が 20 並列でも厳密 |
+| `test_grounded_connector_serializes_its_genai_client()` | genai client への同時呼び出しが 1 に抑えられる(google-genai はスレッド安全性を明文化していないため) |
+| `test_state_reducers_merge_worker_partials()` | reducer の意味論: append+RESET / first-write-wins / set-union / 予算 max マージ |
 
 #### test_trusted_source_invariants.py(5件)— 信頼できる情報源の不変条件 【最重要級】
 
@@ -438,7 +455,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `317 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 15ファイル158件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)** / **Deep Research の配線と課金(`test_deep_research_enablement.py`)** / **LangGraph 移行(`test_graph_golden.py`(旧 test_harness_golden.py)・`test_checkpointer_firestore.py`・`test_runner.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `328 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 16ファイル169件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)** / **Deep Research の配線と課金(`test_deep_research_enablement.py`)** / **LangGraph 移行(`test_graph_golden.py`(旧 test_harness_golden.py)・`test_checkpointer_firestore.py`・`test_runner.py`)** / **M2 並列安全性(`test_parallel_safety.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

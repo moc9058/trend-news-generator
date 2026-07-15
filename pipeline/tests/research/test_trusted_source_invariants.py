@@ -19,7 +19,7 @@ weakening of the trust model therefore fails the suite rather than passing revie
 import pytest
 
 import app.research.llm as llm_mod
-from app.research.phases.gather import MAX_SELECTED
+from app.research.graph.nodes.gather import MAX_SELECTED
 from app.research.phases.plan import STRATEGY_MATRIX
 from app.research.schemas import BudgetState, ResearchRun, SourceHit
 from tests.research.conftest import FakeConn, drive

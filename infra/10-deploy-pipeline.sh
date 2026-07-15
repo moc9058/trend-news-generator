@@ -53,14 +53,17 @@ for job in "${JOBS[@]}"; do
   # resumes via a Firestore lease, so retrying is safe (docs 10 §6.3).
   retries=0
   [[ "$job" == "collect" || "$job" == "seed" || "$job" == "generate-report" ]] && retries=1
-  # The Research Agent run is long and memory-heavier than the daily jobs.
+  # The Research Agent run is long, memory-heavier, and (M2) fans work out onto
+  # threads — up to research_max_concurrency parallel LLM/fetch workers — so it
+  # gets 2 CPUs and 2Gi where the daily jobs stay at 1/512Mi.
   memory=512Mi
+  cpu=1
   timeout=1800
-  [[ "$job" == "generate-report" ]] && { memory=1Gi; timeout=3600; }
+  [[ "$job" == "generate-report" ]] && { memory=2Gi; cpu=2; timeout=3600; }
   gcloud run jobs deploy "job-${job}" \
     --image="$IMAGE" --region="$REGION" \
     --service-account="$PIPELINE_SA" \
-    --memory="$memory" --cpu=1 --max-retries="$retries" --task-timeout="$timeout" \
+    --memory="$memory" --cpu="$cpu" --max-retries="$retries" --task-timeout="$timeout" \
     --set-env-vars="$COMMON_ENV" \
     --set-secrets="$SECRET_ENV" \
     --command=python --args=-m,"$module"

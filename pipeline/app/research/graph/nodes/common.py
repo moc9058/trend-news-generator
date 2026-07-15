@@ -44,13 +44,14 @@ def make_ctx(state: ResearchState, runtime_ctx: ResearchRuntimeContext) -> RunCo
 def state_delta(ctx: RunContext, **extra) -> dict:
     """Project a RunContext back onto channels after a phase has mutated it.
 
-    Always snapshots the budget: `model_copy` because the live Budget keeps being
+    Always snapshots the budget: a copy because the live Budget keeps being
     charged after this node returns, and a checkpoint must record the value as of
-    this superstep rather than alias a mutating object.
+    this superstep rather than alias a mutating object. `snapshot()` copies under
+    the Budget lock so a concurrent worker's charge cannot tear the read (M2).
     """
     delta = {
         "run": ctx.run,
-        "budget": ctx.budget.state.model_copy(deep=True),
+        "budget": ctx.budget.snapshot(),
         "hit_index": ctx.hit_index,
         "hit_rqs": {k: sorted(v) for k, v in ctx.hit_rqs.items()},
         "selected": ctx.selected,
@@ -82,8 +83,8 @@ def afford(state: ResearchState, runtime_ctx: ResearchRuntimeContext,
 
 
 def budget_snapshot(runtime_ctx: ResearchRuntimeContext) -> dict:
-    """The budget-only delta a stopping node returns."""
-    return {"budget": runtime_ctx.budget.state.model_copy(deep=True)}
+    """The budget-only delta a stopping or joining node returns."""
+    return {"budget": runtime_ctx.budget.snapshot()}
 
 
 def budget_stop(state: ResearchState, runtime) -> dict:

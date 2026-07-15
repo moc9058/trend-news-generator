@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     research_max_fetches: int = 80             # per-run fetch ceiling
     research_wall_clock_min: int = 40          # per-run soft wall-clock (within task-timeout)
     research_checkpoint_ttl_days: int = 14     # LangGraph checkpoint retention (Firestore TTL)
-    research_max_concurrency: int = 1          # graph.stream max_concurrency; >1 from M2
+    research_max_concurrency: int = 4          # parallel fan-out workers per superstep (M2)
     semantic_scholar_api_key: str = ""         # optional; connectors fall back without it
 
     # --- Research Chat (admin-only chat; see docs/tech-report/05-detailed-design/11) ---

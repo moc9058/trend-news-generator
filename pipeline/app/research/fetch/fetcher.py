@@ -15,6 +15,7 @@ unit-testable with respx and without real network/DNS.
 
 import ipaddress
 import socket
+import threading
 import time
 from typing import Callable, NamedTuple, Optional
 from urllib.robotparser import RobotFileParser
@@ -92,16 +93,35 @@ class Fetcher:
         self._robots: dict[str, Optional[RobotFileParser]] = {}
         self._domain_count: dict[str, int] = {}
         self._last_fetch: dict[str, float] = {}
+        # M2: extract workers fetch in parallel. One short global lock guards the
+        # shared dicts; a per-host lock serialises everything about one host —
+        # rate gap, the GET itself, robots load and slot accounting — so the
+        # 1 req/s/host politeness promise survives concurrency while different
+        # hosts stay fully parallel.
+        self._global_lock = threading.Lock()
+        self._host_locks: dict[str, threading.Lock] = {}
+
+    def _host_lock(self, host: str) -> threading.Lock:
+        with self._global_lock:
+            return self._host_locks.setdefault(host, threading.Lock())
 
     # -- guards ---------------------------------------------------------------
     def _robots_allowed(self, url: str) -> bool:
+        # Caller holds this host's per-host lock, so only one thread can be
+        # loading robots for a host; the global lock only guards the dict itself
+        # (never held across the network call).
         if not self._respect_robots:
             return True
         parts = urlsplit(url)
         host = parts.hostname or ""
-        if host not in self._robots:
-            self._robots[host] = self._load_robots(f"{parts.scheme}://{parts.netloc}")
-        rp = self._robots[host]
+        with self._global_lock:
+            cached = host in self._robots
+        if not cached:
+            rp = self._load_robots(f"{parts.scheme}://{parts.netloc}")
+            with self._global_lock:
+                self._robots.setdefault(host, rp)
+        with self._global_lock:
+            rp = self._robots[host]
         return rp is None or rp.can_fetch(USER_AGENT, url)
 
     def _load_robots(self, origin: str) -> Optional[RobotFileParser]:
@@ -116,6 +136,8 @@ class Fetcher:
             return None
 
     def _rate_limit(self, host: str) -> None:
+        # _last_fetch[host] is only ever touched under this host's per-host lock
+        # (held by fetch()), so the read-sleep-write below stays race-free.
         if self._rps <= 0:
             return
         gap = 1.0 / self._rps
@@ -131,20 +153,24 @@ class Fetcher:
             log.warning("fetch blocked (ssrf/scheme)", extra={"fields": {"url": url[:200]}})
             return None
         host = urlsplit(url).hostname or ""
-        if self._domain_count.get(host, 0) >= MAX_PER_DOMAIN:
-            log.info("fetch skipped (per-domain cap)", extra={"fields": {"host": host}})
-            return None
-        if not self._robots_allowed(url):
-            log.info("fetch disallowed by robots", extra={"fields": {"url": url[:200]}})
-            return None
-        self._rate_limit(host)
+        with self._host_lock(host):
+            with self._global_lock:
+                capped = self._domain_count.get(host, 0) >= MAX_PER_DOMAIN
+            if capped:
+                log.info("fetch skipped (per-domain cap)", extra={"fields": {"host": host}})
+                return None
+            if not self._robots_allowed(url):
+                log.info("fetch disallowed by robots", extra={"fields": {"url": url[:200]}})
+                return None
+            self._rate_limit(host)
 
-        result = self._raw_fetch(url)
-        if result is None:
-            result = self._wayback(url)
-        if result is not None:
-            self._domain_count[host] = self._domain_count.get(host, 0) + 1
-        return result
+            result = self._raw_fetch(url)
+            if result is None:
+                result = self._wayback(url)
+            if result is not None:
+                with self._global_lock:
+                    self._domain_count[host] = self._domain_count.get(host, 0) + 1
+            return result
 
     def _raw_fetch(self, url: str, via_archive: bool = False) -> Optional[FetchResult]:
         try:

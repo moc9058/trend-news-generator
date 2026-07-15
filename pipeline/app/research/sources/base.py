@@ -67,6 +67,9 @@ class HttpConnector:
             self._consecutive_failures = 0
             return hits
         except Exception as exc:  # noqa: BLE001 — a connector failure is non-fatal
+            # Deliberately unlocked under M2's parallel gather workers: a lost
+            # increment costs at most one extra strike before the breaker trips,
+            # and httpx.Client itself is safe for concurrent requests.
             self._consecutive_failures += 1
             if self._consecutive_failures >= CIRCUIT_BREAK_THRESHOLD:
                 self.disabled = True

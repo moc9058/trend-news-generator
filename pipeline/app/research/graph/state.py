@@ -28,6 +28,18 @@ from app.research.schemas import (
     SourceHit,
 )
 
+# Sentinel a dispatch node writes to clear an accumulator channel before its
+# workers append. Without the reset, a verify->gather loop's second verify pass
+# would append onto the first pass's claims and duplicate every claim.
+RESET = "__reset__"
+
+
+def append_or_reset(cur, new):
+    """Accumulator reducer: workers append lists; RESET empties the channel."""
+    if isinstance(new, str) and new == RESET:
+        return []
+    return list(cur or []) + list(new or [])
+
 
 def merge_hits(cur: dict, new: dict) -> dict:
     """urlHash-keyed union, first write wins.
@@ -98,3 +110,42 @@ class ResearchState(TypedDict, total=False):
     revisions: int                                # survives a crash, unlike the old ctx
     post_id: str
     stop_reason: str                              # "" | "budget_exhausted"
+    # M2 accumulators: dispatch RESETs, workers append, the barrier consumes.
+    claims_buf: Annotated[list[Claim], append_or_reset]   # verify_rq -> coverage
+    evidence_ids: Annotated[list[str], append_or_reset]   # extract_one -> (audit trail)
+
+
+# --------------------------------------------------------------------------- #
+# Fan-out task payloads (M2). A Send's arg is the WORKER'S ENTIRE INPUT — the
+# graph state is not merged in (verified by the M2 step-0 probe) — so each task
+# must carry everything its worker needs beyond the runtime context. Payloads are
+# checkpointed with the superstep, so keep them small: localize gets the rendered
+# skeleton string, not the whole ReportDraft.
+# --------------------------------------------------------------------------- #
+
+class GatherTask(TypedDict):
+    rq_id: str
+    rq_q: str
+    connector: str
+    language: str
+    loop: int
+
+
+class ExtractTask(TypedDict):
+    hit: SourceHit
+    url_hash: str
+    rq_ids: list[str]
+    loop: int
+    theme: str      # extract prompt's rq= slot + Retrieval.query (was run.theme)
+    language: str   # EvidenceRecord.language (was run.canonicalLanguage)
+
+
+class VerifyTask(TypedDict):
+    rq_id: str
+    rq_q: str
+    contested: bool
+
+
+class LocalizeTask(TypedDict):
+    lang: str
+    skeleton: str

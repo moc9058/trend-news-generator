@@ -20,19 +20,22 @@ from app.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# superstep -> the phase the admin should show. Nodes absent from this map (the
-# plan_gate and budget_stop bookkeeping nodes) project nothing, so the flow view
-# never shows a phase the run is not actually in.
+# superstep -> the phase the admin should show. Only phase-carrying nodes are
+# mapped: M2's dispatch/worker nodes and the plan_gate/budget_stop bookkeeping
+# nodes project nothing, so the flow view never shows a phase the run is not in
+# and the run doc is written once per phase (at its barrier), not once per worker.
 NODE_PHASE: dict[str, str] = {
     "plan": Phase.plan.value,
-    "gather": Phase.gather.value,
-    "extract": Phase.extract.value,
-    "verify": Phase.verify.value,
-    "write": Phase.write.value,
+    "gather_triage": Phase.gather.value,
+    "extract_join": Phase.extract.value,
+    "coverage": Phase.verify.value,
+    "localize_join": Phase.write.value,
     "review": Phase.review.value,
 }
 
-RECURSION_LIMIT = 50  # worst case: 2 gather loops + 1 revise exceeds the default 25
+# Worst case superstep count: each fanned phase is now 3 supersteps (dispatch,
+# workers, barrier), so 2 gather loops + 1 revise ≈ 38 — over the default 25.
+RECURSION_LIMIT = 50
 
 
 def _initial_state(run: ResearchRun) -> dict:

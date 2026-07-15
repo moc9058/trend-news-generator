@@ -50,6 +50,7 @@
 - **`budget_exhausted` で停止**: 予算上限に達し次フェーズに入れず graceful 停止。部分成果（計画・証拠一覧）は閲覧可能。続きは**新しい run**（予算を上げて）で。同一 run の継続は行わない設計（doc 10 §7.2）
 - **`failed`**: `events` の `ok:false` 行と `error` を確認。多くはコネクタ断か LLM スキーマ不正。**resume**: `gcloud run jobs execute job-generate-report --region asia-northeast1` で再実行すると `claim_next` が同じ run を取り直し、**チェックポイントの続き（失敗した superstep）から再開**する。完了済みフェーズは再実行されない＝そのぶんの費用は再請求されない（2026-07-15 の LangGraph 移行前は「最後に完了したフェーズを丸ごと再実行」だった）
 - **チェックポイントの実体**: `researchRuns/{id}/checkpoints`（+ `checkpoint_chunks` / `checkpoint_writes`）。**成功した run は自分で消す**ので、ここに残っているのは失敗・cancel・承認待ちのまま放置された run だけ。放置分は `expiresAt` の TTL（14日、`config.research_checkpoint_ttl_days`）が自動回収するので手で消す必要はない。「チェックポイントが無い run を再実行した」場合は先頭からやり直す（evidence/claim は ID 冪等、postId があれば handoff はスキップなので安全。ログに `resuming a run with no checkpoint` が出る）
+- **並列実行と予算**（M2）: gather/extract/verify/write の内部は最大4スレッドの worker で並列実行される。`usdCap` は会計上のハード上限のまま — ワーストケースの残余超過は「並列数 × 実行中の軽量 LLM 1コール」（セント単位）。fetch 上限（80）は原子的に厳密。並列で困ったら `config.py` の `research_max_concurrency` を 1 に戻して再デプロイすれば M1 相当の直列に戻る
 - **デプロイとの関係**: 実行中の run がいても `./deploy.sh` して構わない（stale lease → 次の実行が拾って再開）。ただし**グラフの形や state スキーマを変えたデプロイ**では、進行中の run が新コードで再開して失敗し得る（証拠・claim は残るので新しい run で拾える）。deploy.sh 末尾の warn-only `check_inflight_research` が進行中の run を一覧表示する
 - **`running` のまま固まる**: heartbeat が30分超で stale とみなされ、次の job 実行が自動で奪取・再開する（この lease の仕組みは移行後も不変）。手動なら上記の execute を叩く
 - **コネクタが 429 嵐 / 連続失敗**: 5連続失敗で当該コネクタは run 内で自動無効化（サーキットブレーカ）され、カバレッジに未充足として残る。恒常的なら該当コネクタのキー/クォータを確認

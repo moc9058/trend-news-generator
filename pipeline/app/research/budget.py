@@ -7,6 +7,8 @@ does NOT enter that phase — it graceful-degrades (proceed to write with what i
 has, marking unresolved RQs as open) rather than silently truncating.
 """
 
+import threading
+
 from app.generators.openai_client import cost_usd
 from app.research.schemas import BudgetState, Phase
 
@@ -28,25 +30,59 @@ DEEP_RESEARCH_MIN_USD = 3.0
 
 
 class Budget:
+    """One instance is shared by every node AND every fan-out worker of a run
+    (M2), so all mutation happens under a lock. `usdSpent += x` is a read-modify-
+    write: two workers racing it would each read the same old value and one
+    charge would vanish — quietly eroding the very cap this class exists to hold.
+    Reads (remaining/can_afford/...) stay lock-free: a single attribute read is
+    atomic under the GIL, and a guard that observes a value one charge stale only
+    shifts WHERE the floor triggers, never the accounting itself.
+    """
+
     def __init__(self, state: BudgetState):
         self.state = state
+        self._lock = threading.Lock()
 
     # -- charging -------------------------------------------------------------
     def charge_llm(self, model: str, tokens_in: int, tokens_out: int) -> float:
         """Add one LLM call's cost (priced by openai_client.PRICES) and return it."""
         usd = cost_usd(model, tokens_in, tokens_out)
-        self.state.usdSpent = round(self.state.usdSpent + usd, 6)
+        with self._lock:
+            self.state.usdSpent = round(self.state.usdSpent + usd, 6)
         return usd
 
     def charge_usd(self, usd: float) -> None:
         """Add a flat cost (e.g. a Deep Research call priced per-run)."""
-        self.state.usdSpent = round(self.state.usdSpent + usd, 6)
+        with self._lock:
+            self.state.usdSpent = round(self.state.usdSpent + usd, 6)
 
     def note_fetch(self, n: int = 1) -> None:
-        self.state.fetchUsed += n
+        with self._lock:
+            self.state.fetchUsed += n
+
+    def try_note_fetch(self) -> bool:
+        """Atomically claim one fetch slot; False when the cap is spent.
+
+        The parallel extract workers use this instead of a separate
+        fetch_available() + note_fetch() pair, whose check-then-act gap would let
+        N workers through the last slot. The slot is claimed BEFORE the fetch and
+        is consumed even if the fetch then fails — matching the sequential code,
+        which counted every attempt.
+        """
+        with self._lock:
+            if self.state.fetchUsed >= self.state.fetchCap:
+                return False
+            self.state.fetchUsed += 1
+            return True
 
     def note_deep_research(self) -> None:
-        self.state.drCallsUsed += 1
+        with self._lock:
+            self.state.drCallsUsed += 1
+
+    def snapshot(self) -> BudgetState:
+        """A consistent copy for checkpointing (no torn read mid-charge)."""
+        with self._lock:
+            return self.state.model_copy(deep=True)
 
     # -- queries --------------------------------------------------------------
     def remaining(self) -> float:

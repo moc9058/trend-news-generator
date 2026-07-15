@@ -1,6 +1,6 @@
 # 詳細設計 10: 資料調査エージェント(Research Agent)
 
-> 対象コード時点: コミット c6427a7 + 未コミット変更 / 最終更新: 2026-07-15(**M1: 自前 Harness → LangGraph 移行**(§3.1/§4.1/§6.1/**§8.2 全面改訂**)/ M0-c: deep_research 配線(§4.3)/ M0-b: 信頼源のプロンプト強化(§4.2)・英語ポリシー(§6.5))
+> 対象コード時点: コミット f192157 + 未コミット変更 / 最終更新: 2026-07-15(**M2: フェーズ内並列 fan-out**(§4.1.2/§4.1.3)/ M1: 自前 Harness → LangGraph 移行(§3.1/§6.1/**§8.2 全面改訂**)/ M0-c: deep_research 配線(§4.3)/ M0-b: 信頼源のプロンプト強化(§4.2))
 >
 > **状態: 実装済み(P0–P9、コード完了・未デプロイ)** — §9 の実装タスク P0–P9 を実装済み。**P0** 区分リネーム移行、**P1** research 基盤、**P2** コネクタ v1 + fetcher + extract_text、**P3** Harness + 調査系フェーズ(plan→verify)、**P4** 執筆系フェーズ(write / review)+ citecheck + Post(report)、**P5** ジョブ+API 3本+select+Deep Research(flag)、**P6** admin Research 画面、**P7** infra(job-generate-report / sched-generate-report OIDC / IAM。スクリプトのみ・未デプロイ)、**P8** 評価(golden plan→review 通貫 + 失敗パターン §7.3、`pytest 136 passed`)、**P9** 文書。**2026-07 更新**: フェーズを R0–R9(+R7L)の11個から意味名の6個(plan / gather / extract / verify / write / review)へ統合し(§4.1.1)、モデルを GPT-5.6 系(sol / terra / luna)へ移行(§3.2)。実コードは `pipeline/app/research/` と `admin/src/app/[locale]/research/`。**未実装(繰り越し)**: レポートの言語別3ページ Notion 公開(§6.2 の `_publish_notion(post, post_id)` 拡張)— review の handoff は下書き Post を作るところまで。本番の migrate/deploy/Notion スキーマ変更は runbook 参照(未実行)。実装指示プロンプトは [`docs/prompts/research-agent-implementation.md`](../../prompts/research-agent-implementation.md)。
 
@@ -61,15 +61,16 @@
 ```
 pipeline/app/research/
   graph/                # LangGraph 実装(2026-07-15。旧 harness.py はここに置き換わり削除済み)
-    builder.py          #   トポロジー: ノード/エッジ/ループバック。DeltaChannel 禁止の assert
-    state.py            #   ResearchState = チェックポイントに入るチャネル定義 + reducer
+    builder.py          #   トポロジー: ノード/エッジ/ループバック/fan-out。DeltaChannel 禁止の assert
+    state.py            #   ResearchState = チャネル定義 + reducer + RESET + fan-out タスク型(M2)
     context.py          #   ResearchRuntimeContext = チェックポイントに入れない生き物(Budget/コネクタ/Fetcher)
     checkpointer.py     #   FirestoreCheckpointSaver(自前。blob チャンク保存 + TTL)
     runner.py           #   lease 済み run の実行制御: 入力決定・run doc への投影・cancel・後始末
-    nodes/              #   common.py(state<->RunContext アダプタ・予算ガード)+ フェーズ別6ノード
-  context.py            # RunContext: ノードがフェーズ実装へ渡す作業用の器
+    nodes/              #   common.py + フェーズ別ノード。M2 で gather/extract/verify/write の
+                        #   実装本体を吸収(dispatch → 並列 worker → バリアの3段構成。§4.1.2)
+  context.py            # RunContext: plan/review ノードがフェーズ実装へ渡す作業用の器
   state.py budget.py events.py schemas.py prompts.py select.py(定期実行のテーマ自動選定)
-  phases/ plan.py gather.py extract.py verify.py write.py review.py   # 判断の実体(ノードが委譲)
+  phases/ plan.py review.py   # 残る判断の実体はこの2つ(gather/extract/verify/write は M2 で graph/nodes/ へ移設・削除)
   sources/ base.py web_grounded.py kokkai.py academic.py gov_docs.py books.py ieee.py news.py deep_research.py
   fetch/   fetcher.py extract_text.py archive.py citecheck.py
 pipeline/app/jobs/generate_report.py     # キュー消費エントリポイント
@@ -185,28 +186,78 @@ plan(intake+テーマ自動選定+RQ 分解)→(任意: awaiting_plan_approval)
 
 合計目安 ~$8.3 + 予備 → **ハード上限 $10**(`budgetUsd`)。超過見込み時(残額 < 当該フェーズの `PHASE_MIN_USD`)は次フェーズに入らず graceful degrade(§7.2)。
 
-#### 4.1.2 グラフのノードとエッジ(2026-07-15 M1)
+#### 4.1.2 グラフのノードとエッジ(2026-07-15 M1 → 同日 M2 で fan-out 化)
 
-上の状態機械を LangGraph の `StateGraph` として実装したもの(`graph/builder.py`)。**フェーズの数も順序もループバックも変えていない** — 変わったのは「誰が回すか」だけ。
+上の状態機械を LangGraph の `StateGraph` として実装したもの(`graph/builder.py`)。**フェーズの数も順序もループバックも不変** — M2 で変わったのは gather / extract / verify / write の内部が「dispatch → 並列 worker 群 → バリア」の3段になったこと。worker は `config={"max_concurrency": research_max_concurrency}`(既定4)のスレッドで並列実行される。
 
-| ノード | 返すもの | 行き先 |
+```mermaid
+graph TD;
+    START([start]) --> plan;
+    plan -.-> plan_gate;
+    plan_gate --> gather_dispatch;
+    gather_dispatch -.->|Send × RQ×コネクタ| gather_search;
+    gather_dispatch -.-> gather_triage;
+    gather_search --> gather_triage;
+    gather_triage -.-> extract_dispatch;
+    extract_dispatch -.->|Send × 文書| extract_one;
+    extract_dispatch -.-> extract_join;
+    extract_one --> extract_join;
+    extract_join --> verify_dispatch;
+    verify_dispatch -.->|Send × RQ| verify_rq;
+    verify_dispatch -.-> coverage;
+    verify_rq --> coverage;
+    coverage -.->|loop| gather_dispatch;
+    coverage -.-> write_canonical;
+    write_canonical -.->|Send × 言語| localize_lang;
+    write_canonical -.-> localize_join;
+    localize_lang --> localize_join;
+    localize_join --> review;
+    review -.->|revise| write_canonical;
+    review -.-> END([end]);
+    gather_dispatch -.-> budget_stop;
+    extract_dispatch -.-> budget_stop;
+    verify_dispatch -.-> budget_stop;
+    write_canonical -.-> budget_stop;
+    review -.-> budget_stop;
+    budget_stop --> END;
+```
+
+(`graph.get_graph().draw_mermaid()` の出力を整形。実線 = 静的エッジ、点線 = `Command`/`Send` ルーティング)
+
+| ノード | 役割 | 備考 |
 |---|---|---|
-| `plan` | `Command` | → `plan_gate`(予算ガードなし: plan に floor は無い) |
-| `plan_gate` | `dict` | `run.planApproval and not run.planApproved` なら `interrupt()` で中断。静的エッジで → `gather` |
-| `gather` | `Command` | → `extract` / 予算不足なら → `budget_stop` |
-| `extract` | `Command` | → `verify` / → `budget_stop` |
-| `verify` | `Command` | `coverage.decision=="loop"` なら → `gather`(**loops++ はここだけ**)、他は → `write` / → `budget_stop` |
-| `write` | `Command` | → `review` / → `budget_stop`。**`phase_start("write")` の唯一の発生源**(管理画面はこの回数−1で revise 辺を描く) |
-| `review` | `Command` | `review_decision=="revise"` なら → `write`(**revisions++ はここだけ**)、他は → `END` / → `budget_stop` |
-| `budget_stop` | `dict` | `stop_reason="budget_exhausted"` を立てるだけ。静的エッジで → `END` |
+| `plan` / `plan_gate` | M1 と不変 | gate は `interrupt()` の承認ゲート |
+| `gather_dispatch` | ガード → `phase_start("gather")` → 未解決 RQ × 有効コネクタごとに `Send` | 予算不足なら phase イベントを出さず `budget_stop`(admin では pending のまま) |
+| `gather_search`(worker) | クエリ精緻化 LLM → `conn.search` → `connector_search` イベント | 部分 `hit_index`/`hit_rqs` を返し、reducer が first-write-wins / set-union でマージ |
+| `gather_triage`(バリア) | タイトル dedupe → triage LLM → tertiary 除外 + `MAX_SELECTED` cap → `phase_end` | **全候補を突き合わせる品質ゲートなので意図的に同期点** |
+| `extract_dispatch` | ガード → `phase_start` → `evidence_ids` を RESET → 文書ごとに `Send` | |
+| `extract_one`(worker) | `try_note_fetch()`(原子的)→ fetch/スナップショット → 抽出 LLM → `evidence_create_if_absent` | 冪等なので再試行・並列で重複しない |
+| `extract_join` | `phase_end("extract")` のみ | 静的エッジで `verify_dispatch` へ |
+| `verify_dispatch` | ガード → `phase_start` → `claims_buf` を RESET → 証拠のある RQ ごとに `Send` | |
+| `verify_rq`(worker) | verifier LLM → 引用ゲート/renderAs(rubric)→ `upsert_claim` → `claims_buf` へ append | 証拠は Firestore から再読(Send の引数はチェックポイントされるため小さく保つ) |
+| `coverage`(バリア) | `claims_buf` → dedupe → `claims`。全 RQ のカバレッジ判定(純関数 `gap_decision`)→ loop なら **loops++(唯一の加算点)** → `gather_dispatch` / 充足なら `write_canonical`。`phase_end("verify")` | |
+| `write_canonical` | ガード → **`phase_start("write")` の唯一の発生源**(admin の revise 辺 = この回数 − 1)→ writer LLM → canonical 言語分の localized を自前で作り、他言語ごとに `Send` | worker にはレンダリング済み skeleton **文字列**を渡す(ReportDraft 全体は渡さない) |
+| `localize_lang`(worker) | localizer LLM(`detail.language` 付き) | `localized` チャネルの dict-update reducer がマージ |
+| `localize_join` | `phase_end("write")` | 静的エッジで `review` へ |
+| `review` / `budget_stop` | M1 と不変(revise の行き先だけ `write_canonical` に)| **revisions++ は review だけ** |
 
-規約:
+イベント契約(admin 互換の要): **フェーズ通過ごとに `phase_start`/`phase_end` は厳密に1組** — dispatch が start、バリアが end を出し、**worker はフェーズイベントを一切出さない**(worker の `llm_call`/`fetch`/`connector_search` は従来どおり)。RESET センチネル(`state.RESET`)は accumulator チャネル(`claims_buf`/`evidence_ids`)を dispatch 時に空にする — これが無いとループ2周目の verify が1周目の claims に積み増して全 claim が重複する(`test_claims_buffer_reset_on_second_verify_pass` が固定。逐次実装は毎パス上書きだったので、RESET+再構築がその意味論の再現)。
 
-- **分岐するノードは `Command(goto=...)` を返し、`destinations=` を宣言する**(図の生成用)。分岐しないノードは静的エッジ。**同じノードに両方を付けない**(二重ルーティングになる)
-- **予算ガードは `phase_start` より前**に判定する。予算不足でスキップされたフェーズはイベントを1つも出さず、管理画面では `pending` のまま残る(旧 Harness と同じ見え方)
-- `plan_gate` と `budget_stop` は**フェーズではない**ので、`runner.NODE_PHASE` に載せず run ドキュメントの `phase` にも投影しない
+**チャネル**(= チェックポイントに入る状態。`graph/state.py`): M1 の一覧に `claims_buf` / `evidence_ids`(ともに `append_or_reset` reducer)が加わった。**旧 Harness でメモリ上にしか無かった `draft`/`localized`/`selected`/`revisions` がチャネル化されていることが、§8.2 の空 Post バグの根治**。`Budget` 本体・コネクタ・Fetcher は**チャネルに入れない**(`graph/context.py` の `ResearchRuntimeContext` で注入)— 直列化できない上、Budget は worker が並列に課金する生きた共有オブジェクトである必要があるため。
 
-**チャネル**(= チェックポイントに入る状態。`graph/state.py`): `run` `budget` `hit_index` `hit_rqs` `selected` `claims` `coverage` `draft` `localized` `audit` `review_decision` `revisions` `post_id` `stop_reason`。**旧 Harness でメモリ上にしか無かった `draft`/`localized`/`selected`/`revisions` がここに入ったことが、§8.2 の空 Post バグの根治**。一方 `Budget` 本体・コネクタ・Fetcher は**チャネルに入れない**(`graph/context.py` の `ResearchRuntimeContext` で注入)— 直列化できない上、Budget はフェーズ途中の判定に使う生きたオブジェクトである必要があるため。
+#### 4.1.3 並列実行の安全性(M2)
+
+worker はスレッドで並列実行されるため、共有される可変オブジェクトには全て明示的な防御がある(検証は `tests/research/test_parallel_safety.py` — 各ロックを外すと対応するテストが**実際に落ちる**ことを変異注入で確認済み):
+
+| 共有物 | 防御 | 理由 |
+|---|---|---|
+| `Budget`(run に1つ、全 worker が課金) | `threading.Lock` + 原子的 `try_note_fetch()` + `snapshot()` | `usdSpent += x` は read-modify-write — 無防備だと並列課金が消失し、**キャップの根拠そのものが崩れる**。fetch 枠は check-then-act をロック内で1操作に |
+| `Fetcher` の politeness 状態 | グローバル Lock(辞書保護)+ **ホスト別 Lock**(レート間隔・GET・スロット計上を一括保持) | 同一ホストは完全直列 = 1 req/s 約束を並列下でも維持。**異なるホストは並列のまま** |
+| grounded コネクタの genai client | インスタンスごとに Lock 1本 | google-genai は sync client のスレッド安全性を明文化していない(計画書 §5.4 のフォールバック)。web/gov_docs/news の3インスタンス間は並列 |
+| `HttpConnector` のサーキットブレーカ | **無防備(意図的)** | 増分消失は最悪1ストライク余分なだけの良性競合。httpx.Client 自体は並行安全 |
+| Firestore Client | 追加防御なし | 公式にスレッド安全(共有してはいけないのは Transaction/WriteBatch のみ。本リポジトリ唯一のトランザクション = lease はグラフ実行前・単一スレッド) |
+
+予算の残余超過はワースト `max_concurrency × 実行中1コール`(worker は LLM 呼び出し前に floor を確認する。軽量モデルでセント単位)— `usdCap` は「会計上の上限」として runbook に明記。テストは `sys.setswitchinterval(1e-6)` で GIL 切替を強制する — 既定の 5ms では read-modify-write 全体が1クォンタムに収まってしまい、ロック無しの変異が通ってしまうことを確認済み(それこそがこのスイートが排除すべき偽の安心)。
 
 #### 4.1.1 2026-07 フェーズ統合(R0–R9+R7L → 6フェーズ)
 

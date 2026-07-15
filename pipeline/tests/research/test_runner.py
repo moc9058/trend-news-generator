@@ -183,10 +183,11 @@ def test_merge_budget_tolerates_a_missing_side():
 # ---- superstep projection --------------------------------------------------
 
 def test_phase_nodes_project_onto_the_run_document(store):
+    """M2: the phase is projected at each phase's BARRIER node, not per worker."""
     run = _run()
     store.runs[run.id] = run
     budget = BudgetState(usdCap=10.0, usdSpent=2.0)
-    graph = _StubGraph(chunks=[{"gather": {"budget": budget}}])
+    graph = _StubGraph(chunks=[{"gather_triage": {"budget": budget}}])
 
     runner.run_research(run, graph=graph, context=_ctx())
 
@@ -196,10 +197,15 @@ def test_phase_nodes_project_onto_the_run_document(store):
 
 
 def test_bookkeeping_nodes_project_nothing(store):
-    """plan_gate/budget_stop are not phases; the flow view must not show them."""
+    """plan_gate/budget_stop/dispatches/workers are not in the map; the flow view
+    must not see them and the run doc must not be written once per worker."""
     run = _run()
     store.runs[run.id] = run
-    graph = _StubGraph(chunks=[{"plan_gate": {}}, {"budget_stop": {"stop_reason": "x"}}])
+    graph = _StubGraph(chunks=[{"plan_gate": {}}, {"budget_stop": {"stop_reason": "x"}},
+                               {"gather_dispatch": {}}, {"gather_search": {"hit_index": {}}},
+                               {"extract_one": {"evidence_ids": ["h"]}},
+                               {"verify_rq": {"claims_buf": []}},
+                               {"localize_lang": {"localized": {}}}])
 
     runner.run_research(run, graph=graph, context=_ctx())
 

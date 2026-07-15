@@ -3,7 +3,7 @@
 Collected here so the golden test and the trusted-source invariants drive the
 pipeline through the SAME fakes and the SAME seam. That is what makes them a
 parity gate across the LangGraph migration: M1 swapped the harness for
-runner.run_research and M2 will relocate the phase code into nodes, but as long
+runner.run_research and M2 relocated the phase code into fan-out nodes, but as long
 as these fixtures and the assertions on top of them stay put, "the new thing does
 what the old thing did" is a property the suite checks rather than a claim.
 """
@@ -158,8 +158,16 @@ def drive(run, registry=None, *, saver=None, graph=None):
 # --------------------------------------------------------------------------- #
 
 def install_fake_llm(monkeypatch, store):
-    """Actor-dispatched fake for llm.structured, mirroring the golden fixtures."""
+    """Actor-dispatched fake for llm.structured, mirroring the golden fixtures.
+
+    M2 runs the graph's workers on real threads (max_concurrency=4), so this fake
+    is exactly as concurrent as production LLM calls would be — the counter is
+    locked, and everything else reads immutable inputs or GIL-atomic dict ops.
+    """
+    import threading
+
     counter = {"n": 0}
+    counter_lock = threading.Lock()
 
     def fake_structured(schema, model, system, user, *, budget, run_id, phase, actor,
                         prompt_version="", extra_detail=None):
@@ -182,8 +190,9 @@ def install_fake_llm(monkeypatch, store):
                 "claims": ["事実"], "stance": "positionA", "isInterpretation": False})
         if actor == "verifier":
             ev_ids = list(store.evidence.get(run_id, {}).keys())
-            counter["n"] += 1
-            n = counter["n"]
+            with counter_lock:
+                counter["n"] += 1
+                n = counter["n"]
             return schema.model_validate({"claims": [
                 {"claimId": f"cl_{n}_a", "rqId": "rq", "text": "断定できる事実",
                  "evidenceIds": ev_ids[:1], "verdict": "corroborated",

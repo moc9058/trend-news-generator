@@ -1,6 +1,6 @@
 # 04. パラメーターシート — 設定値の一覧
 
-> 対象コード時点: コミット c6427a7 + 未コミット変更(M1: LangGraph 移行の 2 設定 / M0-a: LangSmith / Research Chat: `chat_*` 設定)/ 最終更新: 2026-07-15
+> 対象コード時点: コミット f192157 + 未コミット変更(M2: 並列 fan-out — max_concurrency=4・generate-report 2Gi/2cpu / M1: LangGraph の 2 設定 / M0-a: LangSmith / Research Chat: `chat_*`)/ 最終更新: 2026-07-15
 
 この文書は trend-news-generator が「いま、どういう設定値で動いているか」の一覧の**正**(基準表)である。値の意味・定義場所・変更時に触る場所だけを扱い、作業手順そのものは扱わない。
 
@@ -91,7 +91,7 @@ flowchart TB
 | `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
 | `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
 | `research_checkpoint_ttl_days`(`RESEARCH_CHECKPOINT_TTL_DAYS`) | `14` | なし | LangGraph チェックポイントの保持日数。`graph/checkpointer.py` が全ドキュメントに `expiresAt` を刻み、Firestore の TTL ポリシー(`00-bootstrap.sh`)が回収する。成功 run は自分で消すので、これが効くのは失敗・cancel・承認待ち放置の run |
-| `research_max_concurrency`(`RESEARCH_MAX_CONCURRENCY`) | `1` | なし | `graph.stream(config={"max_concurrency": ...})`。M1 は直列。M2 のフェーズ内 fan-out で 4 に上げる |
+| `research_max_concurrency`(`RESEARCH_MAX_CONCURRENCY`) | `4` | なし | `graph.stream(config={"max_concurrency": ...})` — フェーズ内 fan-out(gather の RQ×コネクタ / extract の文書 / verify の RQ / write の言語)の並列 worker 数上限(M2) |
 | `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
 | `chat_model`(`CHAT_MODEL`) | `gpt-5.6-sol` | なし | Research Chat の壁打ち(sparring)応答生成、および調査モード深掘り(deep)の統合(synthesize)を担う最上位判断モデル。doc 11 |
 | `chat_research_model`(`CHAT_RESEARCH_MODEL`) | `gpt-5.6-terra` | なし | Research Chat 調査モードのクイック(quick)統合(synthesize)モデル |
@@ -162,14 +162,14 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ### 4.2 ジョブ7種
 
-大半のジョブは同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-short → `app.jobs.generate_short`)。**例外は `job-generate-report`(Research Agent、doc 10)**: 実行が長く重いため `--memory=1Gi --task-timeout=3600`、かつ retries=**1**(draft のみで投稿しない・lease/resume で二重実行を防ぐ。§4.3)。`10-deploy-pipeline.sh` がこのジョブだけ個別に上書きする。
+大半のジョブは同一イメージ、実行 SA は pipeline-sa、メモリ 512Mi / CPU 1、`--task-timeout=1800`(1回の実行が30分を超えると失敗として打ち切り)、環境変数は共通4変数+全シークレット。起動コマンドは `--command=python --args=-m,app.jobs.<名前>`(ジョブ名のハイフンはモジュール名ではアンダースコア。例: job-generate-short → `app.jobs.generate_short`)。**例外は `job-generate-report`(Research Agent、doc 10)**: 実行が長く重く、M2 からはフェーズ内 fan-out が最大 `research_max_concurrency`(4)本のスレッドで並列に LLM/fetch を回すため `--memory=2Gi --cpu=2 --task-timeout=3600`、かつ retries=**1**(draft のみで投稿しない・lease/checkpoint resume で二重実行を防ぐ。§4.3)。`10-deploy-pipeline.sh` がこのジョブだけ個別に上書きする。
 
 | ジョブ | 役割 | max-retries | 起動元 |
 |---|---|---|---|
 | job-collect | 収集(RSS / arXiv / IEEE Xplore / Gemini グラウンディング+画像取得) | **1** | スケジューラ(毎日 06:00) |
 | job-generate-short | 短文投稿の生成+自動公開 | **0** | スケジューラ(毎日 08:00) |
 | job-generate-article | 記事(長文)の下書き生成 | **0** | スケジューラ(月曜 07:00) |
-| job-generate-report | レポート調査(Research Agent)。キュー消費+lease で researchRuns を処理。1Gi / 3600秒 | **1** | pipeline-api の `_trigger_job`(admin 起動 or 毎月1日 07:00 の scheduled run 経由) |
+| job-generate-report | レポート調査(Research Agent)。キュー消費+lease で researchRuns を処理。**2Gi / 2cpu** / 3600秒 | **1** | pipeline-api の `_trigger_job`(admin 起動 or 毎月1日 07:00 の scheduled run 経由) |
 | job-cleanup-drafts | 未承認の下書きを30日で自動削除 | **0** | スケジューラ(毎日 04:00) |
 | job-refresh-threads-token | Threads トークンの自動更新 | **0** | スケジューラ(月曜 03:00) |
 | job-seed | 初期データ投入(カテゴリ・ソース・設定の既定値) | **1** | 手動のみ(スケジューラなし) |
@@ -283,9 +283,9 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 | 定数 | 値 | 定義場所 | 意味 |
 |---|---|---|---|
-| `MAX_SELECTED` | 20件 | `research/phases/gather.py` | triage が選ぶソースの上限(超過分は切り捨て) |
-| `MAX_REFINED_QUERIES` | 2件 | `research/phases/gather.py` | RQ×コネクタあたりの精緻化クエリ数 |
-| `MIN_EVIDENCE_PER_RQ` | 2件 | `research/phases/verify.py` | RQ が resolved になる最低証拠数(かつ primary/secondary ≥1) |
+| `MAX_SELECTED` | 20件 | `research/graph/nodes/gather.py` | triage が選ぶソースの上限(超過分は切り捨て) |
+| `MAX_REFINED_QUERIES` | 2件 | `research/graph/nodes/gather.py` | RQ×コネクタあたりの精緻化クエリ数 |
+| `MIN_EVIDENCE_PER_RQ` | 2件 | `research/graph/nodes/verify.py` | RQ が resolved になる最低証拠数(かつ primary/secondary ≥1) |
 | `PHASE_MIN_USD` | gather .70 / extract .50 / verify .60 / write 1.00 / review .30 | `research/budget.py` | そのフェーズに**入る**のに必要な残予算(下回ると graceful stop) |
 | `DEEP_RESEARCH_MIN_USD` | 3.0 | `research/budget.py` | DR が自動スキップになる残予算のしきい値 |
 | `DEEP_RESEARCH_FALLBACK_USD` | 2.0 | `research/sources/deep_research.py` | DR のレスポンスから usage が取れない時に積む見積り |

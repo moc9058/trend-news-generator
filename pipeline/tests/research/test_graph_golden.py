@@ -192,6 +192,85 @@ def test_golden_citecheck_flags_hallucinated_citation(store):
 
 
 # --------------------------------------------------------------------------- #
+# M2: fan-out specifics                                                        #
+# --------------------------------------------------------------------------- #
+
+def test_fanout_single_phase_event_pair(store, monkeypatch):
+    """However many workers a phase fans out, the admin sees ONE start/end pair.
+
+    Three RQs × three connectors = nine gather workers; the flow view must still
+    count exactly one gather traversal. Also pins that the workers genuinely ran
+    on multiple threads — without that, M2 is just M1 with extra supersteps.
+    """
+    import threading
+
+    orig = llm.structured
+
+    def wide_planner(schema, model, system, user, **kw):
+        if kw.get("actor") == "planner":
+            return schema.model_validate({
+                "themeClass": "politics_history", "contested": False,
+                "rqs": [{"id": f"rq{i}", "q": f"問い{i}",
+                         "strategies": ["kokkai", "academic", "news"]}
+                        for i in (1, 2, 3)]})
+        return orig(schema, model, system, user, **kw)
+    monkeypatch.setattr(llm, "structured", wide_planner)
+
+    threads_seen = set()
+
+    class _ThreadTrackingConn(FakeConn):
+        def search(self, q):
+            threads_seen.add(threading.get_ident())
+            return super().search(q)
+
+    registry = {"kokkai": _ThreadTrackingConn("kokkai", [kokkai_hit()]),
+                "academic": _ThreadTrackingConn("academic", [academic_hit()]),
+                "news": _ThreadTrackingConn("news", [news_hit()])}
+    run = _run("rr_fanout", languages=["ja"])
+    store.runs[run.id] = run
+
+    drive(run, registry)
+
+    evs = [ev for rid, ev in store.events if rid == run.id]
+    searches = [ev for ev in evs if ev.action == "connector_search"]
+    assert len(searches) >= 9, "3 RQs × 3 connectors should all have searched"
+    for phase in ("gather", "extract", "verify", "write"):
+        starts = sum(1 for ev in evs if ev.phase == phase and ev.action == "phase_start")
+        ends = sum(1 for ev in evs if ev.phase == phase and ev.action == "phase_end")
+        assert (starts, ends) == (1, 1), f"{phase}: {starts} starts / {ends} ends"
+    assert len(threads_seen) > 1, "workers must actually run on parallel threads"
+    assert store.runs[run.id].status == "awaiting_review"
+
+
+def test_claims_buffer_reset_on_second_verify_pass(store):
+    """A verify->gather loop must not carry the previous pass's claims forward.
+
+    The sequential code overwrote ctx.claims wholesale each pass; the accumulator
+    channel would instead append across passes — the dispatch's RESET is what
+    restores the old semantics. Without it, this run's three verify passes would
+    stack 3× the claims into write's input.
+    """
+    class _Rq1OnlyConn(FakeConn):
+        def search(self, q):
+            return super().search(q) if q.rqId == "rq1" else []
+
+    registry = {"kokkai": _Rq1OnlyConn("kokkai", [kokkai_hit()]),
+                "academic": _Rq1OnlyConn("academic", [academic_hit()]),
+                "news": _Rq1OnlyConn("news", [news_hit()])}
+    run = _run("rr_buf", languages=["ja"])
+    store.runs[run.id] = run
+
+    final, _ = drive(run, registry)
+
+    assert store.runs[run.id].loops == 2  # three verify passes ran in total
+    # one pass's worth of claims (the verifier fake emits 2 per RQ with evidence),
+    # not three passes' worth stacked up
+    assert len(final["claims"]) == 2
+    assert len({c.claimId for c in final["claims"]}) == len(final["claims"])
+    assert len(final["claims_buf"]) == 2  # the buffer holds only the last pass
+
+
+# --------------------------------------------------------------------------- #
 # What the harness could not do                                               #
 # --------------------------------------------------------------------------- #
 
