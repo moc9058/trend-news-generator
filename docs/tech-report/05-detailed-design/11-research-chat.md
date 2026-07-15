@@ -42,7 +42,11 @@
 | | `app/research/prompts.py` | `SEED_CONTEXT_USER` + `build_seed_block()` |
 | | `app/generators/openai_client.py` | `stream_text()` を追加(既定動作は不変) |
 | admin | `src/app/api/chat/stream/route.ts` | **本リポジトリ唯一の route handler**(SSE 中継) |
-| | `src/components/chat/*` | ChatView / Composer / SourceList / HandoffMenu / ChatPanel / ThreadList / useChatStream |
+| | `src/components/chat/TrustBand.tsx` | **signature = 信頼バンド**(§6.9)。スコアの表示上限 `SCORE_SCALE` の正 |
+| | `src/components/chat/Apparatus.tsx` | 番号付き出典リスト(見出し・コネクタ名・色バッジは意図的に無し) |
+| | `src/components/chat/*` | ChatView / Composer / HandoffMenu / ChatPanel / ThreadList / useChatStream |
+| | `src/components/Markdown.tsx` | `cite` prop で `[n]` を対話可能に(chat のみ。posts は従来経路) |
+| | `src/app/fonts/IBMPlexMono-*.woff2` | apparatus 用書体(ラテン3ウェイト 44KB、同梱) |
 | | `src/app/[locale]/chat/{page,[id]/page}.tsx` | 専用ページ |
 | tests | `pipeline/tests/chat/*` | グラフ・repo・SSE・handoff・seed・LLM 継ぎ目(計 84 tests) |
 
@@ -184,6 +188,44 @@ handoff は**下書き生成まで**。`/api/chat/handoff` は投稿を一切し
 
 **教訓**: repo 層や `data.ts` に新しいクエリを足したら、[03-data-model.md](../03-data-model.md) §6 の表に照らしてから実装する。今回は計画書の「インデックス追加不要」を実地検証せずに信じたのが原因で、03-data-model.md には元から「等価条件+別フィールドの並べ替えを書いたら JSON への追記が必須」と明記されていた。
 
+### 6.9 UI — なぜ調査の回答はチャットバブルではないのか
+
+この機能が汎用チャットと違うのは「一次資料を実際に読み、信頼度を採点して答える」一点だけ。**その主張を UI の構造そのものに出す**のが方針(デザイン案は Artifact で承認済み)。
+
+- **調査 = 記録(`Record`)**: ヘッダ帯(モード・信頼バンド・コスト)→ 本文 → 番号付き出典(`Apparatus`)
+- **壁打ち = 会話(`Talk`)**: バンドも出典も無い。**無いこと自体が情報**(ツールを使っていない)
+- **ユーザー発言 = 引用ブロック**: バブルではなく、左罫線の控えめな塊。質問は回答の文脈であって競合する物体ではない
+
+**順序が「証拠 → 本文」なのはデータがそうだから**: SSE は `sources` を最初の `token` より先に送る(§4.3)。先に届く物を先に描けば、リフローも起きない。当初の実装は先に届いた出典をわざわざ下に描いていた。
+
+**信頼バンド(signature)**: 出典1件 = 1本。**塗り**が tier(一次=塗り / 二次=半調 / 三次=破線)、**高さ**がスコア。読解中は等級未定の刻みを出し、`sources` 到着で等級付きに解決する — 進捗表示と書誌が同じ物体で、「読んだ → 採点した」がそのまま動きになる。動きはここだけ。
+
+**色を使わない理由**: この admin の原則は「**色は状態を意味する**」(緑 = `published`、琥珀 = `draft`)。tier は状態ではないので、色を使うと原則違反になる(初期実装は一次=緑にしてしまっていた)。よって**新しい色は0個**、ink の濃度と高さで表す。副次的に、4段階でも破綻せず色覚に依存しない。ティールは**操作**専用のまま。
+
+### 6.10 スコアは 60 が上限 — 100 ではない
+
+`TrustBand.SCORE_SCALE = 60`。チャットは `rubric.score_reliability(sourceType, url)` を**追加シグナル無し**で呼ぶため、スコアは `base + venue_authority` だけで決まり、corroboration / recency / author は 0 のまま。実際に出る値:
+
+| ソース | 計算 | スコア | tier |
+|---|---|---|---|
+| 国会会議録 | 40 + 15(`.go.jp`) | **55** | primary |
+| arXiv | 30 + 12 | **42** | primary |
+| Reuters | 25 + 8 | **33** | secondary |
+| 一般 web | 15 + 0 | **15** | tertiary |
+
+**100 には構造的に届かない**(レポート側は verify フェーズで加点されるので届く)。`/100` で描くと全部スカスカに見え、実際より弱い証拠だと誤解させるので、`/60` で描き表示にもそう書く。
+
+> **残る論点(製品側)**: チャットが corroboration を渡していないため、**複数の独立ソースが同じ事実を裏付けても加点されない**。直すなら `select`/`read` 後に同一 claim を指すソース数を数えて `score_reliability(corroboration=...)` に渡す。直したら `SCORE_SCALE` も見直すこと。
+
+### 6.11 書体 — 数字だけに人格を置く
+
+`fontFamily.mono` = **IBM Plex Mono**(`[locale]/layout.tsx` の `next/font/local`)。これが admin 唯一の同梱書体で、**全画面の数字**(コスト・ID・時刻・スコア)を担う。
+
+- **なぜ Plex か**: IBM が技術文書のために作った書体で、政府資料と論文を扱うこの製品の語調に合う。`Sans JP` / `Sans KR` の兄弟があるので、将来 apparatus に CJK が必要になっても家族内で解決できる
+- **なぜラテンの display 書体を置かないか**: 回答は**ユーザーが書いた言語に追従**する(ja/ko/en)。ラテン専用書体は**中身がある場所でだけ黙ってフォールバック**するので、見出しは CJK のウェイトとスケールで作る。「display 書体が無い」のは抜けではなく判断
+- **なぜ同梱(`next/font/local`)か**: `next/font/google` はビルド時に fonts.gstatic.com へ取りに行く。Docker ビルドを外部ホストに依存させないため、ラテンのみ3ウェイト **44KB** をリポジトリに置く(`shared/constants.json` を admin に複製しているのと同じ理由)
+- tier の値は `primary` / `secondary` / `tertiary` の**ラテン enum のまま**表示する。既存 admin が `draft` / `published` をそのまま mono で出しているのと同じ規約
+
 ## 7. エラー時の挙動
 
 | 事象 | 挙動 |
@@ -214,4 +256,7 @@ handoff は**下書き生成まで**。`/api/chat/handoff` は投稿を一切し
 - **スキーマを変えたら**: [03-data-model](../03-data-model.md) と `admin/src/lib/types.ts` の両方
 - **enum を増やしたら**: `shared/constants.json` → admin は prebuild で同期(`npm run build` が必要)
 - **`research/llm.py` / `openai_client.py` に触るなら**: 姉妹計画の温存対象。**additive-only**、既定動作を変えないこと(`test_llm_seams` が pin している)
+- **UI に触るなら**: 「調査 = 記録 / 壁打ち = 会話」という**構造の差**が製品の中心的な区別を担っている(§6.9)。バブルに戻すとその区別が消える。tier に色を足すのも禁止(「色 = 状態」の原則)
+- **`Markdown.tsx` に触るなら**: `INLINE_CITE_RE` の cite 代替は**必ず最後**に置くこと。前に出すと `[1](https://x)` がリンクとして解釈されなくなる。`cite` prop を渡さない経路(posts)は従来の `INLINE_RE` のままで、そこは変えない
+- **rubric の呼び方を変えたら**: `TrustBand.SCORE_SCALE`(現在 60)を見直すこと(§6.10)
 - v2 候補: チェックポインタ共用による調査の中断再開 / 検索の並列 fan-out / DeepResearch コネクタのチャット利用 / 壁打ちへのツール付与 / 会話要約メモリ

@@ -1,12 +1,36 @@
 import type { ReactNode } from 'react';
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { getTranslations } from 'next-intl/server';
+import localFont from 'next/font/local';
 import { notFound } from 'next/navigation';
 import { routing } from '@/i18n/routing';
 import { AppShell } from '@/components/AppShell';
 import { type IconName } from '@/components/icons';
 import { iapUserEmail } from '@/lib/iap';
 import '../globals.css';
+
+/** The one typeface this app ships. Every figure goes through it — costs, IDs,
+ * timestamps, reliability scores — because a system that grades things
+ * numerically should not render those numbers in an anonymous system mono.
+ * IBM Plex was drawn for IBM's technical documentation, which is the register
+ * of the material here (government records, papers).
+ *
+ * Latin-only, 3 weights, 44KB total, vendored rather than fetched from Google
+ * at build time: the Docker build should not depend on fonts.gstatic.com.
+ * Body text stays on the viewer's own CJK stack — answers follow the user's
+ * language (ja/ko/en), so a Latin face would silently fall back exactly where
+ * the content is. */
+const plexMono = localFont({
+  src: [
+    { path: '../fonts/IBMPlexMono-400-latin.woff2', weight: '400', style: 'normal' },
+    { path: '../fonts/IBMPlexMono-500-latin.woff2', weight: '500', style: 'normal' },
+    { path: '../fonts/IBMPlexMono-600-latin.woff2', weight: '600', style: 'normal' },
+  ],
+  variable: '--font-plex-mono',
+  display: 'swap',
+  // CJK never reaches this face; keep it out of the way of the system stack.
+  fallback: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+});
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +80,7 @@ export default async function LocaleLayout({
   }));
 
   return (
-    <html lang={locale}>
+    <html lang={locale} className={plexMono.variable}>
       <body>
         <NextIntlClientProvider>
           <AppShell groups={groups} email={email} locale={locale}>

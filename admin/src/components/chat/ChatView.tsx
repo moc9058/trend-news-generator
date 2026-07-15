@@ -2,9 +2,18 @@
 
 /** The chat surface, shared by the dashboard panel (`compact`) and /chat/[id].
  *
+ * A research answer is NOT a chat bubble. It is a record: a head strip (kind,
+ * trust band, cost), the prose, then the numbered apparatus. Sparring stays a
+ * plain conversational block with neither band nor sources. The product's
+ * central distinction — is this just talk, or is it backed by sources it
+ * actually read? — is therefore structural, readable before a word is.
+ *
+ * The order (evidence, then prose) follows the data: the SSE contract emits
+ * `sources` before the first `token`, so the band is populated by the time the
+ * answer starts writing and nothing reflows.
+ *
  * Messages already persisted arrive as `initialMessages` from a server
- * component; the in-flight answer lives in `useChatStream` until it lands. On a
- * fresh thread the URL is swapped to /chat/{id} once the server names it.
+ * component; the in-flight answer lives in `useChatStream` until it lands.
  */
 
 import { useEffect, useRef, useState, useTransition } from 'react';
@@ -12,10 +21,11 @@ import { useRouter } from 'next/navigation';
 import { Markdown } from '@/components/Markdown';
 import { EmptyState } from '@/components/ui';
 import { cancelChat } from '@/lib/actions';
-import type { Category, ChatMessage } from '@/lib/types';
+import type { Category, ChatMessage, ChatSource } from '@/lib/types';
+import { Apparatus } from './Apparatus';
 import { Composer, type ComposerLabels } from './Composer';
 import { HandoffMenu, type HandoffLabels } from './HandoffMenu';
-import { SourceList } from './SourceList';
+import { TrustBand } from './TrustBand';
 import { useChatStream } from './useChatStream';
 
 export interface ChatLabels extends ComposerLabels, HandoffLabels {
@@ -42,30 +52,102 @@ const STAGE_KEY = {
   synthesizing: 'statusSynthesizing',
 } as const;
 
-function Bubble({ role, children }: { role: string; children: React.ReactNode }) {
-  const user = role === 'user';
+/** What the user said. Quiet and set back — the question is context for the
+ * answer, not a competing object. */
+function Turn({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`flex ${user ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={
-          user
-            ? 'max-w-[85%] rounded-2xl rounded-br-sm bg-accent px-3.5 py-2 text-sm text-white shadow-card'
-            : 'w-full min-w-0 rounded-2xl rounded-bl-sm border border-line bg-white px-3.5 py-2.5 shadow-card'
-        }
-      >
-        {children}
-      </div>
-    </div>
+    <p className="whitespace-pre-wrap border-l-2 border-line py-1 pl-3 text-sm text-slate-500">
+      {children}
+    </p>
   );
 }
 
-function ModeTag({ mode, depth, labels }: { mode: string; depth?: string | null; labels: ChatLabels }) {
-  if (mode !== 'research') return null;
+function Kind({ mode, depth, labels }: { mode: string; depth?: string | null; labels: ChatLabels }) {
   return (
-    <span className="mb-1.5 inline-flex items-center gap-1 rounded bg-accent-soft px-1.5 py-px text-[10px] font-medium text-accent">
-      {labels.modeResearch}
-      {depth ? ` · ${depth === 'deep' ? labels.depthDeep : labels.depthQuick}` : ''}
+    <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-accent">
+      {mode === 'research' ? labels.modeResearch : labels.modeChat}
+      {mode === 'research' && depth
+        ? ` · ${depth === 'deep' ? labels.depthDeep : labels.depthQuick}`
+        : ''}
     </span>
+  );
+}
+
+/** A research answer. */
+function Record({
+  mode, depth, labels, sources, pendingCount, costUsd, children, footer, status,
+}: {
+  mode: string;
+  depth?: string | null;
+  labels: ChatLabels;
+  sources: ChatSource[];
+  pendingCount?: number;
+  costUsd?: number | null;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  status?: React.ReactNode;
+}) {
+  const [litN, setLitN] = useState<number | null>(null);
+  return (
+    <article className="min-w-0 rounded-2xl border border-line bg-white px-4 py-3 shadow-card">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line pb-2.5">
+        <div className="flex flex-col gap-1.5">
+          <Kind mode={mode} depth={depth} labels={labels} />
+          <TrustBand
+            sources={sources}
+            pendingCount={pendingCount}
+            litN={litN}
+            onLit={setLitN}
+            label={labels.sources}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          {status}
+          {typeof costUsd === 'number' && (
+            <span className="font-mono text-[10.5px] tabular-nums text-slate-400">
+              ${costUsd.toFixed(3)}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="pt-3 text-sm leading-[1.9] text-ink">
+        <MarkdownWithCites litN={litN} onLit={setLitN}>
+          {children}
+        </MarkdownWithCites>
+      </div>
+      <Apparatus sources={sources} litN={litN} onLit={setLitN} />
+      {footer}
+    </article>
+  );
+}
+
+/** Bridges the cite handlers into Markdown only when the child is a string. */
+function MarkdownWithCites({
+  children, litN, onLit,
+}: {
+  children: React.ReactNode;
+  litN: number | null;
+  onLit: (n: number | null) => void;
+}) {
+  if (typeof children !== 'string') return <>{children}</>;
+  return <Markdown cite={{ litN, onLit }}>{children}</Markdown>;
+}
+
+/** A sparring answer: only talk. No band, no sources, no cost strip — the
+ * absence is the information. */
+function Talk({ labels, children, footer }: {
+  labels: ChatLabels;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 rounded-2xl border border-line bg-white px-4 py-3 shadow-card">
+      <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-[0.12em] text-slate-400">
+        {labels.modeChat}
+      </span>
+      <div className="text-sm leading-[1.9] text-ink">{children}</div>
+      {footer}
+    </div>
   );
 }
 
@@ -120,91 +202,117 @@ export function ChatView({
   }, [state.threadId, currentThread, compact, locale, router]);
 
   const stageLabel = state.progress ? labels[STAGE_KEY[state.progress.stage]] : '';
-  const stageDetail = state.progress?.connector ?? state.progress?.url ?? '';
-
   const showEmpty = !initialMessages.length && !pending && !state.answer;
+  const liveResearch = pending?.mode === 'research';
+
+  const liveStatus = state.progress ? (
+    <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-slate-500">
+      <span className="h-2 w-2 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+      {stageLabel}
+    </span>
+  ) : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className={`min-h-0 flex-1 space-y-3 overflow-y-auto ${compact ? 'max-h-80' : 'pr-1'}`}>
+      <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${compact ? 'max-h-80' : 'pr-1'}`}>
         {showEmpty && <EmptyState message={labels.empty} />}
 
-        {initialMessages.map((m) => (
-          <Bubble key={m.id} role={m.role}>
-            {m.role === 'user' ? (
-              <p className="whitespace-pre-wrap">{m.content}</p>
-            ) : (
-              <>
-                <ModeTag mode={m.mode} depth={m.depth} labels={labels} />
-                {m.status === 'error' ? (
-                  <p className="text-sm text-red-600">
-                    {labels.error}: {m.error}
-                  </p>
-                ) : (
-                  <div className="text-sm leading-relaxed text-ink">
-                    <Markdown>{m.content}</Markdown>
-                  </div>
-                )}
-                {m.status === 'cancelled' && (
-                  <p className="mt-1 text-xs text-slate-400">{labels.cancelled}</p>
-                )}
-                <SourceList sources={m.sources ?? []} label={labels.sources} />
-                {m.status === 'complete' && m.content && (
-                  <HandoffMenu
-                    threadId={currentThread}
-                    messageId={m.id}
-                    categories={categories}
-                    labels={labels}
-                    locale={locale}
-                    handoffs={m.handoffs ?? []}
-                  />
-                )}
-              </>
-            )}
-          </Bubble>
-        ))}
+        {initialMessages.map((m) => {
+          if (m.role === 'user') return <Turn key={m.id}>{m.content}</Turn>;
 
-        {pending && (
-          <Bubble role="user">
-            <p className="whitespace-pre-wrap">{pending.content}</p>
-          </Bubble>
-        )}
+          const footer =
+            m.status === 'complete' && m.content ? (
+              <HandoffMenu
+                threadId={currentThread}
+                messageId={m.id}
+                categories={categories}
+                labels={labels}
+                locale={locale}
+                handoffs={m.handoffs ?? []}
+              />
+            ) : null;
+
+          if (m.status === 'error') {
+            return (
+              <div
+                key={m.id}
+                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {labels.error}: {m.error}
+              </div>
+            );
+          }
+
+          const cancelled =
+            m.status === 'cancelled' ? (
+              <p className="mt-1.5 font-mono text-[10.5px] text-slate-400">{labels.cancelled}</p>
+            ) : null;
+
+          return m.mode === 'research' ? (
+            <Record
+              key={m.id}
+              mode={m.mode}
+              depth={m.depth}
+              labels={labels}
+              sources={m.sources ?? []}
+              costUsd={m.usage?.costUsd ?? null}
+              footer={
+                <>
+                  {cancelled}
+                  {footer}
+                </>
+              }
+            >
+              {m.content}
+            </Record>
+          ) : (
+            <Talk
+              key={m.id}
+              labels={labels}
+              footer={
+                <>
+                  {cancelled}
+                  {footer}
+                </>
+              }
+            >
+              <Markdown>{m.content}</Markdown>
+            </Talk>
+          );
+        })}
+
+        {pending && <Turn>{pending.content}</Turn>}
 
         {(state.streaming || state.answer || state.error) && (
-          <Bubble role="assistant">
-            {pending?.mode === 'research' && (
-              <ModeTag mode="research" depth={pending.depth} labels={labels} />
-            )}
-            {state.progress && (
-              <p className="mb-1.5 flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                {stageLabel}
-                {stageDetail && (
-                  <span className="truncate font-mono text-[10px] text-slate-400">
-                    {stageDetail}
-                  </span>
-                )}
-              </p>
-            )}
+          <>
             {state.error ? (
-              <p className="text-sm text-red-600">
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {labels.error}: {state.error}
-              </p>
-            ) : (
-              <div className="text-sm leading-relaxed text-ink">
-                <Markdown>{state.answer}</Markdown>
-                {state.streaming && !state.answer && !state.progress && (
-                  <span className="text-xs text-slate-400">{labels.streaming}</span>
-                )}
               </div>
+            ) : liveResearch ? (
+              <Record
+                mode="research"
+                depth={pending?.depth}
+                labels={labels}
+                sources={state.sources}
+                // Before grades land, the band shows one plain tick per source
+                // read so far — the progress indicator and the bibliography are
+                // the same object.
+                pendingCount={state.progress?.count ?? 0}
+                costUsd={state.costUsd}
+                status={liveStatus}
+              >
+                {state.answer}
+              </Record>
+            ) : (
+              <Talk labels={labels}>
+                <Markdown>{state.answer}</Markdown>
+                {state.streaming && !state.answer && (
+                  <span className="font-mono text-[10.5px] text-slate-400">{labels.streaming}</span>
+                )}
+              </Talk>
             )}
-            <SourceList sources={state.sources} label={labels.sources} />
-            {state.costUsd !== null && (
-              <p className="mt-2 font-mono text-[10px] text-slate-400">
-                {labels.costLabel} ${state.costUsd.toFixed(3)}
-              </p>
-            )}
-          </Bubble>
+          </>
         )}
         <div ref={bottomRef} />
       </div>

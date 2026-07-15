@@ -7,11 +7,23 @@ import type { ReactNode } from 'react';
 const INLINE_RE =
   /(\*\*(?<bold>.+?)\*\*)|(\*(?<italic>[^*]+?)\*)|(`(?<code>[^`]+?)`)|(\[(?<label>[^\]]+)\]\((?<href>[^)\s]+)\))/g;
 
-function renderInline(text: string): ReactNode[] {
+/** Research chat only: additionally treats a bare `[1]` as a citation marker.
+ * The cite alternative MUST stay last — `[1](https://x)` has to match the link
+ * alternative first, or the link would be shredded into a citation plus a stray
+ * "(https://x)". Post rendering keeps using INLINE_RE and is untouched. */
+const INLINE_CITE_RE = new RegExp(
+  `${INLINE_RE.source}|(\\[(?<cite>\\d+)\\])`,
+  'g',
+);
+
+function renderInline(
+  text: string,
+  cite?: { litN?: number | null; onLit?: (n: number | null) => void },
+): ReactNode[] {
   const out: ReactNode[] = [];
   let pos = 0;
   let key = 0;
-  for (const m of text.matchAll(INLINE_RE)) {
+  for (const m of text.matchAll(cite ? INLINE_CITE_RE : INLINE_RE)) {
     const i = m.index ?? 0;
     if (i > pos) out.push(text.slice(pos, i));
     const g = m.groups ?? {};
@@ -35,13 +47,40 @@ function renderInline(text: string): ReactNode[] {
           {g.label}
         </a>,
       );
+    else if (g.cite !== undefined) {
+      const n = Number(g.cite);
+      const on = cite?.litN === n;
+      out.push(
+        <button
+          key={key++}
+          type="button"
+          className={`rounded-sm px-px align-baseline font-mono text-[0.82em] font-medium text-accent ${
+            on ? 'bg-accent-soft ring-2 ring-accent-soft' : ''
+          } hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+          onMouseEnter={() => cite?.onLit?.(n)}
+          onMouseLeave={() => cite?.onLit?.(null)}
+          onFocus={() => cite?.onLit?.(n)}
+          onBlur={() => cite?.onLit?.(null)}
+        >
+          [{n}]
+        </button>,
+      );
+    }
     pos = i + m[0].length;
   }
   if (pos < text.length) out.push(text.slice(pos));
   return out;
 }
 
-export function Markdown({ children }: { children: string }) {
+export interface CiteOptions {
+  litN?: number | null;
+  onLit?: (n: number | null) => void;
+}
+
+/** `cite` opts research chat into interactive `[n]` markers. Omit it (posts do)
+ * and the parser is byte-for-byte the one that shipped before. */
+export function Markdown({ children, cite }: { children: string; cite?: CiteOptions }) {
+  const ri = (text: string) => renderInline(text, cite);
   const lines = children.split('\n');
   const blocks: ReactNode[] = [];
   let key = 0;
@@ -75,25 +114,25 @@ export function Markdown({ children }: { children: string }) {
     } else if (stripped.startsWith('### ')) {
       blocks.push(
         <h3 key={key++} className="text-base font-bold text-ink">
-          {renderInline(stripped.slice(4))}
+          {ri(stripped.slice(4))}
         </h3>,
       );
     } else if (stripped.startsWith('## ')) {
       blocks.push(
         <h2 key={key++} className="mt-2 border-b border-line pb-1.5 text-lg font-bold text-ink">
-          {renderInline(stripped.slice(3))}
+          {ri(stripped.slice(3))}
         </h2>,
       );
     } else if (stripped.startsWith('# ')) {
       blocks.push(
         <h1 key={key++} className="text-xl font-bold text-ink">
-          {renderInline(stripped.slice(2))}
+          {ri(stripped.slice(2))}
         </h1>,
       );
     } else if (stripped.startsWith('> ')) {
       blocks.push(
         <blockquote key={key++} className="border-l-2 border-accent/50 pl-3 text-slate-500">
-          {renderInline(stripped.slice(2))}
+          {ri(stripped.slice(2))}
         </blockquote>,
       );
     } else if (stripped.startsWith('- ') || stripped.startsWith('* ') || /^\d+\.\s/.test(stripped)) {
@@ -112,13 +151,13 @@ export function Markdown({ children }: { children: string }) {
         ordered ? (
           <ol key={key++} className={`${cls} list-decimal`}>
             {items.map((item, n) => (
-              <li key={n}>{renderInline(item)}</li>
+              <li key={n}>{ri(item)}</li>
             ))}
           </ol>
         ) : (
           <ul key={key++} className={`${cls} list-disc`}>
             {items.map((item, n) => (
-              <li key={n}>{renderInline(item)}</li>
+              <li key={n}>{ri(item)}</li>
             ))}
           </ul>
         ),
@@ -127,7 +166,7 @@ export function Markdown({ children }: { children: string }) {
     } else {
       blocks.push(
         <p key={key++} className="leading-relaxed">
-          {renderInline(stripped)}
+          {ri(stripped)}
         </p>,
       );
     }

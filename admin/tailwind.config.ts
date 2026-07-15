@@ -23,7 +23,11 @@ export default {
         },
       },
       fontFamily: {
+        // IBM Plex Mono (vendored, latin-only) carries every figure in the app.
+        // Loaded in [locale]/layout.tsx; the var falls back to the system mono
+        // if the face ever fails to load.
         mono: [
+          'var(--font-plex-mono)',
           'ui-monospace',
           'SFMono-Regular',
           'Menlo',
