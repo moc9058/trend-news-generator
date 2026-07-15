@@ -15,6 +15,7 @@ beautifulsoup4>=4.12
 python-dotenv>=1.0
 trafilatura>=1.8
 pypdf>=4.0
+langsmith<1,>=0.10
 
 [dev]
 pytest>=8.2

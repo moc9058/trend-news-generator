@@ -41,6 +41,14 @@ class Settings(BaseSettings):
     research_wall_clock_min: int = 40          # per-run soft wall-clock (within task-timeout)
     semantic_scholar_api_key: str = ""         # optional; connectors fall back without it
 
+    # --- Observability (LangSmith SaaS tracing; see app/utils/observability.py) ---
+    # The SDK reads the same LANGSMITH_* env vars directly, so env stays the one
+    # source. Tracing needs both the flag and a key — production sets both iff the
+    # optional langsmith-api-key secret exists.
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "trend-news-generator"
+
     # threads-access-token secret name; the refresh job adds new versions.
     threads_token_secret_name: str = "threads-access-token"
 

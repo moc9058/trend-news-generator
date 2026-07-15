@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from app.config import get_settings
 from app.models import TokenUsage
+from app.utils import observability
 
 # USD per 1M tokens (input, output) — keep in sync with docs/setup-credentials.md
 PRICES = {
@@ -24,7 +25,15 @@ PRICES = {
 
 @lru_cache
 def _client() -> OpenAI:
-    return OpenAI(api_key=get_settings().openai_api_key)
+    client = OpenAI(api_key=get_settings().openai_api_key)
+    ls = observability.ls_client()
+    if ls is not None:
+        # Patches the instance's methods in place (and returns it) — tracing only.
+        # Cost accounting stays ours: PRICES/cost_usd below are unaffected.
+        from langsmith.wrappers import wrap_openai
+
+        client = wrap_openai(client, tracing_extra={"client": ls})
+    return client
 
 
 def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:

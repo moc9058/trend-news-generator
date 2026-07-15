@@ -35,6 +35,7 @@ infra/00-bootstrap.sh → 01-secrets.sh(対話式・既定スキップ) → 10-d
   - `publishers/` **公開順は notion → x → threads 固定**(長文ティーザーが Notion 公開URLを必要とするため)。externalId / Threads containerId で冪等
   - `repo/` Firestore アクセス層。コレクション: `items` `posts` `runs` `categories` `sources` `channelConfigs` `promptTemplates` `researchRuns`(+サブコレクション evidence/claims/events)`settings/{app,channelHealth,notion}`。`research.py` は本リポジトリ唯一のトランザクション lease(`claim_next`)
   - `config.py` pydantic-settings。モデル名・シークレットは全てここ経由
+  - `utils/observability.py` — **LangSmith(SaaS)トレーシング**。`langsmith-api-key` シークレットの有無が唯一のスイッチ(存在すれば `10-deploy-pipeline.sh` が `LANGSMITH_TRACING=true` ごと注入。消して再デプロイ = キルスイッチ)。`openai_client._client()` を `wrap_openai` で包むだけで、**予算計上は従来どおり自前**(`PRICES`/`cost_usd`)。トレース失敗は全て swallow — run を落とさない。プロンプト・生成文のフル送信は承認済み(runbook)
 - `admin/src/` — Firestore は firebase-admin で直接読み書き(`lib/data.ts` 読み取り、`lib/actions.ts` server actions)。公開・リトライ・ジョブ実行だけ ID トークン付きで pipeline-api を呼ぶ(`lib/pipelineClient.ts`)。認証は IAP(`lib/iap.ts` が `x-goog-authenticated-user-email` を読む)。UI 言語 ko/ja/en(next-intl、デフォルト ko)
 - `shared/constants.json` — Python/TS 共通の enum の唯一のソース。admin は prebuild でコピーするので、変更後は再ビルドが必要
 - `infra/env.sh` — 全スクリプトが source する共通設定(SA 3つ: pipeline-sa / admin-sa / scheduler-sa)
@@ -58,6 +59,8 @@ infra/00-bootstrap.sh → 01-secrets.sh(対話式・既定スキップ) → 10-d
 - Gemini/OpenAI キーは Secret Manager 管理。AI Studio で発行したキーは別の無課金プロジェクトに紐づきグラウンディングに使えない — gcloud でプロジェクト内発行すること
 - GCS 署名URL は pipeline-sa の self token-creator で発行(秘密鍵なし)。この IAM を外すと画像添付が壊れる
 - テストの HTTP モックは respx。X の OAuth 1.0a は自前実装(`publishers/x.py`)なので署名ロジック変更時は `test_oauth1.py` を必ず通す
+- **LangSmith SDK は `Settings` ではなく `os.environ` を直読する** — `.env` は pydantic-settings が `Settings` に読むだけで `os.environ` に入らないため、ローカルで `.env` にだけ書くと「クライアントは wrap 済みなのにトレースが1件も出ない」無言の食い違いになる(本番は実 env なので発生せず、気付けない)。`observability._export_env()` が解決済み値を `os.environ` へ書き戻して吸収している(SDK の env は lru_cache されるのでクリアも必要)。なお SDK はレガシーな `LANGCHAIN_*` を `LANGSMITH_*` より優先する
+- **テストから `LANGSMITH_*` を消すには `delenv` では不十分** — `Settings` は env だけでなく `pipeline/.env` も読むため、手元でトレーシングを有効にしていると suite が実キーで LangSmith に送信してしまう(respx の厳格性も壊れる)。`tests/conftest.py` の autouse fixture は env を**空/false に setenv**して dotenv 層ごと打ち消している(env > .env の優先順位を利用)
 
 ## ドキュメント
 

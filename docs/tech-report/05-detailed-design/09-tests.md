@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(test_delete_post.py 追記)
+> 対象コード時点: コミット 6cdcccd + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py 追記)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -70,6 +70,8 @@ uv run pytest -v -k "notion"
 - `pipeline/tests/test_api.py` の `test_run_job_accepted()` — `monkeypatch.setattr` で `_trigger_job`(Cloud Run Job を起動する関数)を、呼ばれた API 名を記録するだけの偽物に差し替え(実ジョブは起動しない)
 
 この差し替えが成立するのは、対象コード(例: `pipeline/app/publishers/base.py` の `publish_post()`)が依存先をモジュール属性経由で参照しているからです。一種の依存注入(依存部品を外から入れ替えられる作り)として機能しています。
+
+**`tests/conftest.py`(全テスト共通の自動 fixture)** — `conftest.py` は pytest が自動で読み込む特別なファイルで、置いたディレクトリ配下の全テストに fixture を配れます。ここには `_no_langsmith_env` が1つだけあり、`autouse=True`(テスト側が何も書かなくても必ず適用)で `LANGSMITH_*` 系の環境変数を空/false に**上書き**します。**なぜ「削除」ではなく「空で上書き」か**: `pipeline/app/config.py` の `Settings` は環境変数だけでなく `pipeline/.env` ファイルも読むため、変数を消しても手元の `.env` に書いたキーが復活してしまいます。pydantic-settings も LangSmith SDK も「環境変数 > `.env`」の優先順位なので、空で上書きすれば両方の層を確実に打ち消せます。これが無いと、トレーシングを有効にしている開発者の手元でだけ、テストが実キーで LangSmith に本物の通信を行い(respx の厳格な検証も壊れる)、テストのプロンプトが SaaS に漏れます。
 
 **fixture(フィクスチャ)** — pytest 用語で「テストの前準備を関数化したもの」。`@pytest.fixture` を付けた関数をテストが引数として受け取ると、準備済みの部品が渡されます。また `tests/fixtures/` ディレクトリには入力データのサンプルが置かれています:
 
@@ -330,7 +332,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `136 passed`(2026-07-14 時点。うち Research Agent が `tests/research/*` に約78件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `156 passed`(2026-07-15 時点。うち Research Agent が `tests/research/*` に81件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 6件)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

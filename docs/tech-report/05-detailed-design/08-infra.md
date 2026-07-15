@@ -1,6 +1,6 @@
 # インフラスクリプト詳細設計 — infra/ の gcloud スクリプト読解
 
-> 対象コード時点: コミット f703290 + 未コミット変更 / 最終更新: 2026-07-13
+> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith)/ 最終更新: 2026-07-15
 
 ## 1. この文書で分かること
 
@@ -286,7 +286,7 @@ done
 - `--task-timeout=1800` — 1 回の実行の制限時間(30 分)。サービス側の `--timeout`(リクエスト単位)とは別物。
 - `gcloud run jobs add-iam-policy-binding … --role=roles/run.invoker` — ループ内でジョブを作った直後に、pipeline-sa へそのジョブの起動権限を付与する。管理画面の「今すぐ実行」は pipeline-api(pipeline-sa 名義)がこの `jobs:run` API を叩くので、この権限がないと 502 になる。
 
-### 6.2 条件付き Secret 注入(ieee-api-key)
+### 6.2 条件付き Secret 注入(ieee-api-key / semantic-scholar-api-key / langsmith-api-key)
 
 同じく `infra/10-deploy-pipeline.sh` の、デプロイに先立つシークレット文字列の組み立て部分です。
 
@@ -305,6 +305,19 @@ fi
 - 1〜6 行目 — `+=` は文字列の末尾連結。`環境変数名=シークレット名:latest` をカンマでつなぎ、`--set-secrets` に渡す 1 本の文字列を組み立てる。左辺(大文字スネークケース)がコンテナ内の環境変数名で、`pipeline/app/config.py`(pydantic-settings)がこの名前で読み取る。右辺の `:latest` は「最新バージョン」参照で、トークン自動更新(4.2)を次回実行から効かせるための選択。
 - `if gcloud secrets describe ieee-api-key >/dev/null 2>&1; then` — `describe` の成否(終了コード)そのものを if の条件に使う。シークレットが存在すれば成功(0)、無ければ失敗。`>/dev/null 2>&1` で通常出力もエラー出力も捨て、**判定のためだけ**にコマンドを走らせている。
 - なぜ条件付きか — IEEE Xplore は `01-secrets.sh` でスキップできる**任意**のソース。それにもかかわらず無条件で `--set-secrets` に含めると、Cloud Run が起動時に存在しないシークレットを解決できず**デプロイ自体が失敗**する。つまりこの if は「登録した人にはフル機能、しない人にも壊れないデプロイ」を両立させる分岐。後から IEEE キーを登録した場合は、`01-secrets.sh`(または直接 `versions add`)→ `10-deploy-pipeline.sh` 再実行、の順で環境変数が生える。
+
+同じ describe ゲートを使う任意シークレットが他に2つある。`semantic-scholar-api-key`(academic コネクタ)と、`langsmith-api-key`(LangSmith トレーシング)。
+
+```bash
+if gcloud secrets describe langsmith-api-key >/dev/null 2>&1; then
+  SECRET_ENV+=",LANGSMITH_API_KEY=langsmith-api-key:latest"
+  COMMON_ENV+=",LANGSMITH_TRACING=true,LANGSMITH_PROJECT=${PROJECT_ID}"
+fi
+```
+
+- `langsmith-api-key` だけは `SECRET_ENV` と `COMMON_ENV` の**両方**に足す点が他と違う。アプリ側(`utils/observability.py` の `langsmith_enabled()`)がキーとフラグの両方を要求する設計なので、「シークレットの存在」という1つの事実からフラグまで導出させ、**シークレットの有無だけが唯一のスイッチ**になるようにしている。
+- **キルスイッチとしての性質**: `--set-env-vars`/`--set-secrets` は毎デプロイ**全置換**(§6.1・CLAUDE.md 落とし穴)なので、シークレットを削除/無効化して再デプロイすれば3つの env がまとめて消え、トレーシングが確実に止まる。手動 `gcloud run jobs update` で env を足しても次のデプロイで消えるのは同じ理由。
+- `LANGSMITH_ENDPOINT` は設定しない(既定 = LangSmith の US SaaS)。プロンプト・生成文が米国へ送られることはユーザー承認済み → [runbook](../../runbook.md)。
 
 ## 7. エラー時の挙動と再実行の考え方
 

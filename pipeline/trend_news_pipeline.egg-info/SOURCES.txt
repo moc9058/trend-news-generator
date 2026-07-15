@@ -73,6 +73,7 @@ app/research/sources/web_grounded.py
 app/utils/__init__.py
 app/utils/gcs.py
 app/utils/logging.py
+app/utils/observability.py
 app/utils/retry.py
 tests/test_academic_sources.py
 tests/test_api.py

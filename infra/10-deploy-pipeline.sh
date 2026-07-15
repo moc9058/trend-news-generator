@@ -24,6 +24,14 @@ fi
 
 COMMON_ENV="PROJECT_ID=${PROJECT_ID},REGION=${REGION},GCS_BUCKET=${BUCKET},PIPELINE_SERVICE_ACCOUNT=${PIPELINE_SA}"
 
+# optional: LangSmith tracing. The secret's existence is the on/off switch — to
+# disable, delete/disable the secret and redeploy (env is fully replaced below).
+# Endpoint is left unset (= US SaaS).
+if gcloud secrets describe langsmith-api-key >/dev/null 2>&1; then
+  SECRET_ENV+=",LANGSMITH_API_KEY=langsmith-api-key:latest"
+  COMMON_ENV+=",LANGSMITH_TRACING=true,LANGSMITH_PROJECT=${PROJECT_ID}"
+fi
+
 echo "--- deploy pipeline-api (private service)"
 gcloud run deploy pipeline-api \
   --image="$IMAGE" --region="$REGION" \

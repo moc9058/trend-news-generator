@@ -1,6 +1,6 @@
 # 04. パラメーターシート — 設定値の一覧
 
-> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14
+> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith)/ 最終更新: 2026-07-15
 
 この文書は trend-news-generator が「いま、どういう設定値で動いているか」の一覧の**正**(基準表)である。値の意味・定義場所・変更時に触る場所だけを扱い、作業手順そのものは扱わない。
 
@@ -59,7 +59,7 @@ flowchart TB
 
 ## 2. config.py 全フィールド表
 
-`pipeline/app/config.py` の `Settings` クラスがアプリ設定の全項目である。**全フィールドの型は文字列(str)**。「本番での上書き元」列は `infra/10-deploy-pipeline.sh` のどのフラグで注入されるかを示す(pipeline-api と全6ジョブに同一内容が入る)。
+`pipeline/app/config.py` の `Settings` クラスがアプリ設定の全項目である。**型は原則 str** だが、数値(`research_max_loops` 等の int、`research_budget_usd_default` の float)と真偽値(`langsmith_tracing` の bool)もある。「本番での上書き元」列は `infra/10-deploy-pipeline.sh` のどのフラグで注入されるかを示す(pipeline-api と全6ジョブに同一内容が入る)。
 
 表の読み方: 「本番での上書き元: なし」は「infra スクリプトは何も注入せず、デフォルト値のまま動く」という意味(手動の gcloud 上書きの可能性は補足参照)。「使用箇所」はそのフィールドを実際に読むコードの場所。
 
@@ -91,10 +91,16 @@ flowchart TB
 | `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
 | `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
 | `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
+| `langsmith_tracing`(`LANGSMITH_TRACING`) | `false`(bool) | `--set-env-vars`(**`langsmith-api-key` シークレットが存在する場合のみ** `true`) | LangSmith へのトレース送信の有効化フラグ。`utils/observability.py`。単独では効かない(下記) |
+| `langsmith_api_key`(`LANGSMITH_API_KEY`) | (空) | `--set-secrets`(langsmith-api-key:latest。シークレットが存在する場合のみ) | LangSmith API キー(`lsv2_...`)。`utils/observability.py` |
+| `langsmith_project`(`LANGSMITH_PROJECT`) | `trend-news-generator` | `--set-env-vars`(同上の条件付き) | トレースの送信先プロジェクト名。アプリコードは読まず、**LangSmith SDK が `os.environ` から直読する**(下記の注意) |
 | `threads_token_secret_name`(`THREADS_TOKEN_SECRET_NAME`) | `threads-access-token` | なし | トークン更新ジョブが新バージョンを書き込む先のシークレット名。`jobs/refresh_threads_token.py` |
 
 補足(重要なものから順に):
 
+- **LangSmith のトレーシングは「フラグ+キー」の両方が揃って初めて有効**(`utils/observability.py` の `langsmith_enabled()`)。本番では `infra/10-deploy-pipeline.sh` が `langsmith-api-key` シークレットの有無を見て3つ全部をまとめて注入するので、**シークレットを消して再デプロイすればキルスイッチ**になる(env は毎デプロイ全置換のため確実に消える)。ローカルで有効化したい場合のみ `pipeline/.env` に `LANGSMITH_TRACING=true` を書く。トレース送信が失敗しても run は落ちない(全例外を swallow)。
+- **`LANGSMITH_*` だけは「①→④の4層」の外にもう1つ読み手がいる**(この表の他の項目と違う点)。LangSmith SDK は `Settings` を経由せず `os.environ` を**直接**見てトレースの ON/OFF を判定する。ところが `.env` ファイルは pydantic-settings が `Settings` に読み込むだけで `os.environ` には反映されないため、**ローカルで `.env` にだけ書くと「アプリは有効だと思っているのに SDK は無効のまま=トレースが1件も出ない」という無言の食い違い**が起きる(本番は Cloud Run が本物の環境変数を渡すので発生しない)。このため `utils/observability.py` の `_export_env()` が、有効化時に解決済みの値を `os.environ` へ書き戻して両者を一致させている。SDK 側は env 読み取りを lru_cache するので、キャッシュのクリアも同関数が行う。
+- 関連する罠: SDK は `LANGSMITH_*` より**レガシーな `LANGCHAIN_*` 名前空間を優先**する。`LANGCHAIN_TRACING_V2=false` が環境にあると `LANGSMITH_TRACING=true` を無言で打ち消す(本システムは `LANGCHAIN_*` を設定しないので通常は無関係だが、トレースが出ない時の調査ポイント)。
 - **`threads_app_secret` は未使用**。リポジトリ全体を検索した結果、参照は `pipeline/app/config.py` の宣言1箇所のみで、`.env.example` にも `infra/01-secrets.sh` にも登場しない。config.py のコメントは「トークン更新ジョブにのみ必要」と述べているが、実装(`publishers/threads.py` の `refresh_long_lived_token()`)は既存トークンだけで更新できる `th_refresh_token` 方式のため、アプリシークレットは不要になっている。コメントが実装より古い。
 - **「本番での上書き元: なし」の項目も、gcloud を手で実行すれば上書きできる**。CLAUDE.md の「本番ジョブには `GEMINI_MODEL` 等の env 上書きが入っている場合がある」はこの手動上書きを指す(infra スクリプト内には存在しない。§4.4)。モデル名を変える前は config.py のデフォルトと本番の実際の環境変数の両方を確認すること。
 - モデル名は Firestore の `promptTemplates` に `modelOverride` が設定されているカテゴリではそちらが優先される(`generators/daily.py` と `generators/longform.py` の `template.modelOverride or settings...`)。→ [03-data-model.md](03-data-model.md)
@@ -114,10 +120,11 @@ flowchart TB
 | `notion-api-key` | `ntn_` / `secret_` で始まるトークン | 必須 | job-generate-short、pipeline-api | なし |
 | `ieee-api-key` | IEEE Xplore API キー | **任意**(空でスキップ可) | job-collect / job-generate-report(ieee コネクタ) | なし |
 | `semantic-scholar-api-key` | Semantic Scholar API キー | **任意**(空なら OpenAlex/Crossref にフォールバック) | job-generate-report(academic コネクタ) | なし |
+| `langsmith-api-key` | `lsv2_` で始まる文字列 | **任意**(存在しなければトレーシングごと無効) | 全ジョブ / pipeline-api(OpenAI 呼び出しのトレース) | なし |
 
 補足:
 
-- 注入は `infra/10-deploy-pipeline.sh` が pipeline-api と全6ジョブへ**一括で**行う(単一イメージのため、消費しないジョブにも同じセットが入る)。`ieee-api-key` だけは「シークレットが存在する場合のみ注入」の条件付き。
+- 注入は `infra/10-deploy-pipeline.sh` が pipeline-api と全6ジョブへ**一括で**行う(単一イメージのため、消費しないジョブにも同じセットが入る)。`ieee-api-key` / `semantic-scholar-api-key` / `langsmith-api-key` は「シークレットが存在する場合のみ注入」の条件付き。`langsmith-api-key` はさらに、存在するとき `--set-env-vars` 側にも `LANGSMITH_TRACING=true` と `LANGSMITH_PROJECT` を追加する(§2 補足)。
 - 参照は常に `:latest`(最新バージョン)。ジョブは実行開始時に解決するので、新バージョン追加後の**次回実行**から有効になる。
 - 「消費する」列は、pipeline-api の手動ジョブ実行機能(§4.1)を使うと pipeline-api がどのジョブの処理も代行できるため、厳密には pipeline-api はすべてのシークレットを消費し得る。表はコード上の主たる消費者を示す。
 - **`threads-access-token` だけ特別扱い**: job-refresh-threads-token が毎週、Meta の更新 API で新トークンを取得し、`jobs/refresh_threads_token.py` の `_rotate_secret()` が (1) 新バージョンを追加し (2) それ以外の有効バージョンをすべて無効化する。この自動更新のため、pipeline-sa にはこのシークレットに限り `secretVersionAdder`(バージョン追加)と `secretVersionManager`(無効化)の2ロールが追加付与されている(`infra/01-secrets.sh`)。他のシークレットは読み取り(`secretAccessor`)のみ。

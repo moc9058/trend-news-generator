@@ -20,6 +20,7 @@ Requires-Dist: beautifulsoup4>=4.12
 Requires-Dist: python-dotenv>=1.0
 Requires-Dist: trafilatura>=1.8
 Requires-Dist: pypdf>=4.0
+Requires-Dist: langsmith<1,>=0.10
 Provides-Extra: dev
 Requires-Dist: pytest>=8.2; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.23; extra == "dev"

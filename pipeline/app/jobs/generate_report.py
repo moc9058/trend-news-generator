@@ -12,6 +12,7 @@ import os
 from app.repo import research as repo
 from app.research.harness import ResearchHarness
 from app.research.schemas import ResearchRunStatus
+from app.utils import observability
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -23,17 +24,21 @@ def main() -> None:
     worker_id = os.environ.get("CLOUD_RUN_EXECUTION", "local")
     harness = ResearchHarness()
     processed = 0
-    for _ in range(MAX_RUNS_PER_EXECUTION):
-        run = repo.claim_next(worker_id)
-        if run is None:
-            break
-        processed += 1
-        log.info("claimed research run", extra={"fields": {"run": run.id, "worker": worker_id}})
-        try:
-            harness.run(run.id)
-        except Exception as exc:  # noqa: BLE001 — one run's failure must not abort the job
-            log.error("research run failed", extra={"fields": {"run": run.id, "error": str(exc)}})
-            repo.set_status(run.id, ResearchRunStatus.failed.value, error=str(exc)[:1000])
+    try:
+        for _ in range(MAX_RUNS_PER_EXECUTION):
+            run = repo.claim_next(worker_id)
+            if run is None:
+                break
+            processed += 1
+            log.info("claimed research run", extra={"fields": {"run": run.id, "worker": worker_id}})
+            try:
+                harness.run(run.id)
+            except Exception as exc:  # noqa: BLE001 — one run's failure must not abort the job
+                log.error("research run failed", extra={"fields": {"run": run.id, "error": str(exc)}})
+                repo.set_status(run.id, ResearchRunStatus.failed.value, error=str(exc)[:1000])
+    finally:
+        # The task can be reclaimed as soon as main() returns; drain queued traces first.
+        observability.flush_langsmith()
     log.info("generate_report finished", extra={"fields": {"processed": processed}})
 
 

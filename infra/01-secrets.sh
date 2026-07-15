@@ -29,9 +29,12 @@ create_or_update threads-access-token "Threads long-lived access token"
 create_or_update threads-user-id  "Threads user ID (numeric)"
 create_or_update notion-api-key   "Notion internal integration token (ntn_/secret_...)"
 create_or_update ieee-api-key     "IEEE Xplore API key" optional
+# Presence of this secret is what enables tracing in 10-deploy-pipeline.sh;
+# deleting it and redeploying is the kill switch.
+create_or_update langsmith-api-key "LangSmith API key (lsv2_...)" optional
 
 echo "--- grant pipeline-sa access"
-for s in openai-api-key gemini-api-key x-credentials threads-access-token threads-user-id notion-api-key ieee-api-key; do
+for s in openai-api-key gemini-api-key x-credentials threads-access-token threads-user-id notion-api-key ieee-api-key langsmith-api-key; do
   gcloud secrets describe "$s" >/dev/null 2>&1 || continue
   gcloud secrets add-iam-policy-binding "$s" \
     --member="serviceAccount:${PIPELINE_SA}" --role=roles/secretmanager.secretAccessor -q >/dev/null

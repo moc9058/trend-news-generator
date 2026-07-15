@@ -47,6 +47,15 @@
 - **コネクタが 429 嵐 / 連続失敗**: 5連続失敗で当該コネクタは run 内で自動無効化（サーキットブレーカ）され、カバレッジに未充足として残る。恒常的なら該当コネクタのキー/クォータを確認
 - **cancel**: admin の「実行をキャンセル」→ `cancelRequested=true`。Harness が次のフェーズ境界で `cancelled` にして停止
 
+### LangSmith（トレーシング）
+LLM 呼び出しの可視化のみを担う**任意の観測基盤**。UI は https://smith.langchain.com のプロジェクト `trend-news-generator`（1 LLM 呼び出し = 1トレース。モデル名・トークン数・レイテンシ・プロンプト/生成文の全文が見える）。
+
+- **障害の影響範囲はトレースの欠落だけ**。SDK はバックグラウンド送信で自身の例外を飲み込み、`utils/observability.py` も全例外を swallow + warn ログにするため、LangSmith が落ちても停止しても run は正常に完走する。「トレースが出ない」以外の症状が出たらそれは別の原因
+- **有効・無効の切り替え**: `langsmith-api-key` シークレットの有無が唯一のスイッチ。**止めたいとき** = `gcloud secrets delete langsmith-api-key`（または最新バージョンを disable）→ `./deploy.sh --skip-seed`。env は毎デプロイ全置換なので確実に消える。**戻すとき** = `./infra/01-secrets.sh` でキーを投入 → 再デプロイ
+- **キーが無効・期限切れ**: warn ログ（`langsmith flush failed` / `langsmith client init failed`）が出るだけで run は完走する。急がず次のデプロイで差し替えてよい
+- **プライバシー**: プロンプト・生成文・収集記事の抜粋が**全文そのまま米国の SaaS へ送られる**（ユーザー承認済みの既定。エンドポイントは未設定 = US）。送信したくないデータを扱う場合は上記のキルスイッチで無効化すること
+- 無料枠は月 5,000 トレース / 保持14日。本システムの想定は短文 ~90 + 記事 ~4 + レポート 1 run/月 で枠の 5% 未満
+
 ## コスト監視
 
 - ダッシュボードに当月 LLM コスト（runs.costUsd 集計）
