@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+from app.chat.api import router as chat_router
 from app.config import get_settings
 from app.models import ChannelStatus, PostStatus
 from app.publishers.base import delete_post_channels, publish_post
@@ -20,6 +21,7 @@ from app.utils.logging import get_logger
 
 log = get_logger(__name__)
 app = FastAPI(title="trend-news pipeline-api")
+app.include_router(chat_router)
 
 JOB_MODULES = {
     "collect": "app.jobs.collect",
