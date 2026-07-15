@@ -17,6 +17,7 @@ const NAV_GROUPS: { group: string; items: { href: string; key: string; icon: Ico
     group: 'groupMain',
     items: [
       { href: '', key: 'dashboard', icon: 'dashboard' },
+      { href: '/chat', key: 'chat', icon: 'chat' },
       { href: '/posts', key: 'posts', icon: 'posts' },
       { href: '/drafts', key: 'drafts', icon: 'drafts' },
       { href: '/focus', key: 'focus', icon: 'target' },

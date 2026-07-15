@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { AutomationCell } from '@/components/AutomationCell';
+import { ChatPanel } from '@/components/chat/ChatPanel';
 import { Icon } from '@/components/icons';
 import { ManualRunPanel } from '@/components/ManualRunPanel';
 import { SaveForm } from '@/components/SaveForm';
@@ -69,6 +70,10 @@ export default async function Dashboard({
           </span>
         </div>
       )}
+
+      {/* ① Research chat — kept below the token-failure banner so an outage
+          still reads first, but above the cards as the daily entry point. */}
+      <ChatPanel locale={locale} />
 
       {/* ② LLM cost */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
