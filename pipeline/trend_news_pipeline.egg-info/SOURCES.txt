@@ -4,6 +4,12 @@ app/config.py
 app/main.py
 app/models.py
 app/normalize.py
+app/chat/__init__.py
+app/chat/api.py
+app/chat/graph.py
+app/chat/prompts.py
+app/chat/schemas.py
+app/chat/stream_llm.py
 app/collectors/__init__.py
 app/collectors/base.py
 app/collectors/enrich.py
@@ -31,6 +37,7 @@ app/publishers/renderer.py
 app/publishers/threads.py
 app/publishers/x.py
 app/repo/__init__.py
+app/repo/chat.py
 app/repo/client.py
 app/repo/configs.py
 app/repo/items.py
