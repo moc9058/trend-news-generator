@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.repo import research as repo
 from app.research import llm, select
 from app.research.context import RunContext
-from app.research.prompts import PLAN_SYSTEM, PLAN_USER, PROMPT_VERSION
+from app.research.prompts import PLAN_SYSTEM, PLAN_USER, PROMPT_VERSION, build_seed_block
 from app.research.schemas import Phase, ResearchPlan
 
 # Source Strategy Matrix (design §4.2): theme class → connector priority order.
@@ -29,9 +29,13 @@ def run(ctx: RunContext) -> None:
         run.theme, run.categoryId = select.select_theme(ctx)
     qblock = ("Existing questions to incorporate:\n" + "\n".join(run.questions)
               if run.questions else "")
+    # trigger="chat": give the planner what the chat already found, as a lead to
+    # verify rather than a conclusion to accept (design doc 11 §5.6).
+    user_prompt = (PLAN_USER.format(theme=run.theme, questions_block=qblock)
+                   + build_seed_block(run.seedContext))
     plan: ResearchPlan = llm.structured(
         ResearchPlan, get_settings().research_planner_model, PLAN_SYSTEM,
-        PLAN_USER.format(theme=run.theme, questions_block=qblock),
+        user_prompt,
         budget=ctx.budget, run_id=run.id, phase=Phase.plan.value,
         actor="planner", prompt_version=PROMPT_VERSION)
 

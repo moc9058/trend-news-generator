@@ -158,3 +158,33 @@ def format_items_for_prompt(items, include_ids: bool = False, max_content: int =
             line += f"\n  FULL TEXT: {it.contentText[:max_content]}"
         lines.append(line)
     return "\n".join(lines)
+
+
+def format_seed_for_prompt(seed) -> str:
+    """Render a chat handoff seed as generation material (design doc 11 §5.6).
+
+    The chat answer is the substance and its sources are the citations, so both
+    go in the `{items}` slot the templates already interpolate — no template
+    edits, and every category's custom prompt keeps working unchanged.
+    """
+    lines = ["- CHAT INVESTIGATION (the owner developed this in research chat; "
+             "it is the basis for this piece)"]
+    if seed.theme:
+        lines.append(f"  THEME: {seed.theme}")
+    if seed.summary:
+        lines.append(f"  FINDINGS: {seed.summary}")
+    for src in seed.sources:
+        line = f"- {src.title or src.url}\n  {src.snippet}".rstrip()
+        lines.append(f"{line}\n  {src.url}")
+    return "\n".join(lines)
+
+
+def seed_block(seed) -> str:
+    """Instruction appended when generating from a chat handoff."""
+    if not seed:
+        return ""
+    return (
+        "\n\nSOURCE OF THIS PIECE — the material above came from the owner's own "
+        "research chat, not the usual collection feed. Stay on its theme and use "
+        "its findings and sources as the basis. Do not introduce unrelated topics."
+    )

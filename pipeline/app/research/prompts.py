@@ -132,6 +132,38 @@ Return JSON: {{"theme": "a specific, researchable theme in Japanese",
   "categoryId": "the category slug it best fits", "rationale": "why"}}"""
 
 
+# Chat handoff (design doc 11 §5.6). Named `_USER` so `_version()` folds it into
+# PROMPT_VERSION by the same naming convention as every other prompt; the dynamic
+# half is interpolated by build_seed_block below and stays out of the hash — the
+# same split write.py's custom_instructions_block already uses.
+SEED_CONTEXT_USER = """
+
+PRIOR WORK — the user reached this theme through their own research chat. Their
+summary and the sources they consulted follow. Treat this as a STARTING POINT,
+not as established fact: verify every claim against primary sources yourself, and
+feel free to conclude that the chat's reading was wrong. The sources listed are a
+lead, not a reading list — find better ones where they exist.
+
+<chat_summary>
+{summary}
+</chat_summary>
+
+<chat_sources>
+{sources}
+</chat_sources>"""
+
+
+def build_seed_block(seed_context) -> str:
+    """Render a run's seedContext for the plan prompt, or "" when there is none."""
+    if not seed_context:
+        return ""
+    sources = "\n".join(
+        f"- {s.title or s.url} ({s.url})" + (f"\n  {s.snippet}" if s.snippet else "")
+        for s in (seed_context.sources or [])) or "(none)"
+    return SEED_CONTEXT_USER.format(
+        summary=(seed_context.summary or "(none)"), sources=sources)
+
+
 def _version() -> str:
     blob = "".join(v for k, v in sorted(globals().items())
                    if k.endswith(("_SYSTEM", "_USER")) and isinstance(v, str))

@@ -27,6 +27,22 @@ def enabled_categories() -> list[Category]:
     return sorted(cats, key=lambda c: c.sortOrder)
 
 
+def category(slug: str) -> Category | None:
+    """One category by slug, enabled or not.
+
+    Unlike `enabled_categories()` this does not filter on `enabled`: a chat
+    handoff names its category explicitly, and refusing it because the scheduled
+    run is switched off would be surprising.
+    """
+    if not slug:
+        return None
+    snap = db().collection("categories").document(slug).get()
+    if not snap.exists:
+        return None
+    data = snap.to_dict() or {}
+    return Category(slug=snap.id, **{k: v for k, v in data.items() if k != "slug"})
+
+
 def enabled_sources(category_id: str) -> list[Source]:
     docs = (
         db()

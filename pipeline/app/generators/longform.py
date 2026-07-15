@@ -17,6 +17,7 @@ from app.models import (
     Channel,
     ChannelState,
     ChannelStatus,
+    ChatSeed,
     Format,
     Post,
     PostStatus,
@@ -34,7 +35,14 @@ MAX_SELECTED = 25
 LANG_NAMES = {"ja": "Japanese", "ko": "Korean", "en": "English"}
 
 
-def generate_for_category(category: Category, post_format: Format) -> Post | None:
+def generate_for_category(category: Category, post_format: Format,
+                          seed: ChatSeed | None = None) -> Post | None:
+    """One long-form Post for `category`.
+
+    `seed` (a research-chat handoff, design doc 11 §5.6) pins the theme to the
+    chat's conclusion. Recent items are still offered alongside the seed's own
+    sources — an article benefits from surrounding context, unlike a short.
+    """
     settings = get_settings()
     template = configs.prompt_template(category.slug, post_format)
     if template is None:
@@ -44,7 +52,9 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
     candidates = items.recent_for_category(
         category.slug, LOOKBACK[post_format], limit=MAX_CANDIDATES
     )
-    if len(candidates) < 3:
+    # The item floor guards against a thin auto-run; a seeded run already has its
+    # substance from the chat, so it stands on its own.
+    if seed is None and len(candidates) < 3:
         log.info("too few items", extra={"fields": {"category": category.slug, "n": len(candidates)}})
         return None
 
@@ -56,7 +66,11 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
     usage = TokenUsage()
 
     # ---- stage 1: selection & outline (cheap model) ----
+    # The seed leads the material so stage 1 outlines around the chat's theme
+    # rather than whatever the feed happens to hold.
     items_block = prompts.format_items_for_prompt(candidates, include_ids=True)
+    if seed:
+        items_block = f"{prompts.format_seed_for_prompt(seed)}\n{items_block}"
 
     keywords_str = ", ".join(template.focusKeywords)
     outline_tpl = template.outlineUserPromptTemplate or "{items}"
@@ -66,6 +80,7 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
     )
     outline_user = prompts.apply_keywords(outline_user, outline_tpl, template.focusKeywords)
     outline_user = prompts.apply_custom_instructions(outline_user, template.customInstructions)
+    outline_user += prompts.seed_block(seed)
     outline = generate_json(
         settings.openai_model_daily,
         template.outlineSystemPrompt or prompts.ARTICLE_OUTLINE_SYSTEM,
@@ -80,12 +95,17 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
         selected = candidates[:MAX_SELECTED]
 
     # ---- stage 2: full article (frontier model) ----
+    selected_block = prompts.format_items_for_prompt(
+        selected, include_ids=True, max_content=4000)
+    if seed:
+        selected_block = f"{prompts.format_seed_for_prompt(seed)}\n{selected_block}"
     article_user = template.userPromptTemplate.format(
-        items=prompts.format_items_for_prompt(selected, include_ids=True, max_content=4000),
+        items=selected_block,
         category=category.name,
         date=today,
         language=lang,
-        theme=outline.get("theme", ""),
+        # An explicit handoff theme wins over stage 1's guess.
+        theme=(seed.theme if seed and seed.theme else outline.get("theme", "")),
         outline="\n".join(f"- {s}" for s in outline.get("outline", [])),
         x_language=LANG_NAMES.get(cfg_x.language, cfg_x.language),
         threads_language=LANG_NAMES.get(cfg_th.language, cfg_th.language),
@@ -95,6 +115,7 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
         article_user, template.userPromptTemplate, template.focusKeywords
     )
     article_user = prompts.apply_custom_instructions(article_user, template.customInstructions)
+    article_user += prompts.seed_block(seed)
     model = template.modelOverride or settings.openai_model_longform
     article = generate_json(model, template.systemPrompt, article_user, usage)
 
@@ -111,6 +132,8 @@ def generate_for_category(category: Category, post_format: Format) -> Post | Non
         body=str(article.get("body", "")),
         sourceItemIds=[it.id for it in selected],
         tokenUsage=usage,
+        chatThreadId=seed.threadId if seed else "",
+        chatMessageId=seed.messageId if seed else "",
         channels={
             # X/Threads teasers get the Notion public URL appended at publish time
             "x": ChannelState(

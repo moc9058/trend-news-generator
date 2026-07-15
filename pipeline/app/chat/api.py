@@ -27,9 +27,12 @@ from app.chat import prompts
 from app.chat.graph import build_graph, make_context
 from app.chat.schemas import (
     ChatDepth,
+    ChatHandoff,
+    ChatHandoffTheme,
     ChatMessage,
     ChatMessageStatus,
     ChatMode,
+    ChatSeedSource,
     ChatThread,
     ChatTitle,
     ChatUsage,
@@ -299,3 +302,138 @@ def cancel_thread(thread_id: str) -> dict:
     if not chat_repo.request_cancel(thread_id):
         raise HTTPException(404, "chat thread not found")
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Handoff: chat answer → short / article / report                             #
+# --------------------------------------------------------------------------- #
+
+class ChatHandoffRequest(BaseModel):
+    threadId: str
+    messageId: str
+    format: str                       # short | article | report
+    categoryId: Optional[str] = None
+    theme: Optional[str] = None
+
+
+@router.post("/handoff")
+def handoff(req: ChatHandoffRequest) -> dict:
+    """Turn a chat answer into a draft (short/article) or a queued research run.
+
+    This endpoint NEVER publishes. short/article produce status=draft and report
+    produces a queued ResearchRun; publishing stays behind the existing
+    approve→publish flow, which is also why the "posting jobs run with
+    retries=0" rule is untouched here.
+    """
+    if req.format not in ("short", "article", "report"):
+        raise HTTPException(400, f"unknown format {req.format}")
+    thread = chat_repo.get_thread(req.threadId)
+    if thread is None:
+        raise HTTPException(404, "chat thread not found")
+    message = chat_repo.get_message(req.threadId, req.messageId)
+    if message is None:
+        raise HTTPException(404, "chat message not found")
+    if message.role != "assistant":
+        raise HTTPException(409, "only an assistant message can be handed off")
+    if message.status != ChatMessageStatus.complete.value:
+        raise HTTPException(409, f"message is {message.status}, not complete")
+
+    if req.format == "report":
+        result = _handoff_report(req, thread, message)
+    else:
+        result = _handoff_post(req, message)
+
+    chat_repo.append_handoff(req.threadId, req.messageId, ChatHandoff(
+        format=req.format, refId=result["refId"],
+        at=datetime.now(timezone.utc)))
+    return result
+
+
+def _seed_sources(message: ChatMessage) -> list[ChatSeedSource]:
+    return [ChatSeedSource(url=s.url, title=s.title, snippet="")
+            for s in (message.sources or [])]
+
+
+def _handoff_report(req: ChatHandoffRequest, thread: ChatThread,
+                    message: ChatMessage) -> dict:
+    from app.main import _trigger_job
+    from app.repo import research as research_repo
+    from app.research.schemas import (
+        BudgetState,
+        ChatSeedContext,
+        ResearchRun,
+        ResearchRunStatus,
+    )
+
+    settings = get_settings()
+    theme, questions = (req.theme or ""), []
+    if not theme:
+        theme, questions = _distil_theme(req, message)
+
+    run = ResearchRun(
+        trigger="chat", requestedBy=thread.requestedBy, theme=theme,
+        questions=questions,
+        budget=BudgetState(usdCap=settings.research_budget_usd_default,
+                           fetchCap=settings.research_max_fetches),
+        seedContext=ChatSeedContext(
+            threadId=req.threadId, messageId=req.messageId,
+            summary=message.content, sources=_seed_sources(message)),
+        status=ResearchRunStatus.queued.value)
+    run_id = research_repo.create(run)
+    # Same contract as POST /api/research/runs: a failed trigger is not an
+    # error — the run stays queued and claim_next() picks it up.
+    try:
+        _trigger_job("generate_report")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("generate_report trigger failed; run stays queued",
+                    extra={"fields": {"run": run_id, "error": str(exc)}})
+    return {"ok": True, "kind": "research_run", "refId": run_id}
+
+
+def _distil_theme(req: ChatHandoffRequest, message: ChatMessage) -> tuple[str, list[str]]:
+    from app.research.budget import Budget
+    from app.research.schemas import BudgetState
+
+    history = chat_repo.recent_history(req.threadId,
+                                       get_settings().chat_history_max_messages)
+    block = "\n".join(f"{m['role']}: {m['content'][:500]}" for m in history) or "(none)"
+    budget = Budget(BudgetState(usdCap=get_settings().chat_budget_quick_usd))
+    try:
+        result: ChatHandoffTheme = llm.structured(
+            ChatHandoffTheme, get_settings().chat_fast_model,
+            prompts.HANDOFF_THEME_SYSTEM,
+            prompts.HANDOFF_THEME_USER.format(history=block,
+                                              message=message.content[:4000]),
+            budget=budget, run_id=req.threadId, phase="handoff", actor="handoff",
+            prompt_version=prompts.PROMPT_VERSION, event_sink=lambda e: None)
+    except Exception as exc:  # noqa: BLE001 — fall back to the answer's opening line
+        log.warning("handoff theme distillation failed",
+                    extra={"fields": {"error": str(exc)}})
+        return message.content.strip().splitlines()[0][:120], []
+    finally:
+        chat_repo.add_usage(budget.state.usdSpent, messages=0)
+    return result.theme, result.questions
+
+
+def _handoff_post(req: ChatHandoffRequest, message: ChatMessage) -> dict:
+    from app.generators import longform, short
+    from app.models import ChatSeed, Format
+    from app.repo import configs, posts
+
+    category = configs.category(req.categoryId or "")
+    if category is None:
+        raise HTTPException(400, f"unknown category {req.categoryId}")
+
+    seed = ChatSeed(
+        threadId=req.threadId, messageId=req.messageId,
+        theme=req.theme or "", summary=message.content,
+        sources=_seed_sources(message))
+
+    if req.format == "short":
+        post = short.generate_for_category(category, seed=seed)
+    else:
+        post = longform.generate_for_category(category, Format.article, seed=seed)
+    if post is None:
+        raise HTTPException(500, "generation produced no post")
+    post_id = posts.create(post)
+    return {"ok": True, "kind": "post", "refId": post_id}

@@ -12,6 +12,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from app.models import ChatSeed, ChatSeedSource  # noqa: F401 — re-exported below
+
 
 class ChatMode(str, Enum):
     chat = "chat"          # sparring partner, no tools
@@ -94,19 +96,10 @@ class ChatMessage(BaseModel):
     createdAt: Optional[datetime] = None
 
 
-class ChatSeedSource(BaseModel):
-    url: str
-    title: str = ""
-    snippet: str = ""
-
-
-class ChatSeed(BaseModel):
-    """Chat → generator handoff payload (short/article), design doc 11 §5.6."""
-    threadId: str = ""
-    messageId: str = ""
-    theme: str = ""
-    summary: str = ""    # the assistant message body the user chose
-    sources: list[ChatSeedSource] = []
+# ChatSeed/ChatSeedSource (the chat → generator handoff payload) live in
+# app/models.py so `generators/` can consume them without importing `chat/`.
+# Re-exported here because they are part of chat's vocabulary.
+__all__ = ["ChatSeed", "ChatSeedSource"]
 
 
 # --------------------------------------------------------------------------- #
