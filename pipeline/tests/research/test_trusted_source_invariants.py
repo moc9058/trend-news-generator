@@ -167,10 +167,14 @@ def test_plan_fixes_invalid_strategies_to_matrix(store, monkeypatch):
     plan = store.runs["rr_inv_01"].plan
     matrix = STRATEGY_MATRIX["politics_history"]
 
-    assert plan.rqs[0].strategies == matrix[:4]
+    # rq1's strategies were all invalid -> matrix[:4], plus the deep_research
+    # assist that plan.py appends to the first RQ only (§4.3).
+    assert plan.rqs[0].strategies == matrix[:4] + ["deep_research"]
     assert plan.rqs[1].strategies == ["news", "kokkai"]
+    # Nothing the planner invented survives: only matrix connectors, and the one
+    # assist leg the code itself adds.
     for rq in plan.rqs:
-        assert all(s in matrix for s in rq.strategies), rq.strategies
+        assert all(s in matrix or s == "deep_research" for s in rq.strategies), rq.strategies
 
     # The fallback must lead with official/scholarly sources, never web-first.
     assert matrix[:4] == ["kokkai", "gov_docs", "books", "academic"]
@@ -273,6 +277,44 @@ def test_weak_claims_render_demoted(store, monkeypatch):
     assert weak, "the verifier's claim should have been recorded"
     assert weak[0].renderAs != "assertion"
     assert weak[0].renderAs == "opinion_report"
+
+
+# ---- Deep Research is an assist, never a primary source (§4.3, M0-c) --------
+
+def test_deep_research_hit_is_secondary_tier_and_never_sole_primary():
+    """A DR citation is pinned at secondary and cannot anchor an assertion alone.
+
+    The connector stamps tierHint="secondary" on every hit, and classify_tier lets
+    the hint win — so DR can only ever cast one secondary vote. Coverage needs
+    ≥1 primary/secondary and the citation gate needs two INDEPENDENT secondaries,
+    so a DR hit can contribute to, but never single-handedly establish, a fact.
+    """
+    from app.research import rubric
+    from app.research.sources.deep_research import parse_citations
+
+    hits = parse_citations({"output": [{"content": [{"annotations": [
+        {"type": "url_citation", "url": "https://example.gov/report", "title": "R"}]}]}]})
+    assert len(hits) == 1
+    hit = hits[0]
+    assert hit.deepResearchAssisted is True
+    assert hit.tierHint == "secondary"
+    assert rubric.classify_tier(hit.sourceType, hit.tierHint) == "secondary"
+
+    # even a .go.jp URL arriving via DR stays secondary — the hint, not the host,
+    # decides the tier, so DR cannot smuggle in a primary.
+    gov = parse_citations({"output": [{"content": [{"annotations": [
+        {"type": "url_citation", "url": "https://www.mofa.go.jp/x.html", "title": "G"}]}]}]})[0]
+    assert rubric.classify_tier(gov.sourceType, gov.tierHint) == "secondary"
+
+    # one DR-sourced secondary alone does not pass the citation gate
+    class _Ev:
+        def __init__(self, url, tier):
+            self.url, self.tier = url, tier
+            self.reliability = type("R", (), {"score": 100})()
+    assert rubric.passes_citation_gate([_Ev(hit.url, "secondary")]) is False
+    # ...but two independent secondaries do — DR can be one of them
+    assert rubric.passes_citation_gate(
+        [_Ev("https://a.example/1", "secondary"), _Ev("https://b.example/2", "secondary")]) is True
 
 
 # --------------------------------------------------------------------------- #

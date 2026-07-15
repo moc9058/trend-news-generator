@@ -264,7 +264,7 @@ score = base(sourceType)            # official_document/parliamentary_record 40,
 | books | Google Books API + NDL サーチ(SRU) | キー任意/無料 | v1 |
 | ieee | 既存 `collectors/ieee_xplore.py` の薄いアダプタ | 既存(200件/日) | v1 |
 | news | 既存 RSS ソース+grounded ニュース検索(GDELT DOC API は v1.5) | 無料 | v1 |
-| deep_research | OpenAI Responses API(`o4-mini-deep-research`、background モード+ポーリング)。Gemini 側は実装時に API 提供状況を確認しプロバイダ差し替え可能な interface で実装 | OpenAI キー/1回~$2 | v1(flag 制御) |
+| deep_research | OpenAI Responses API(`o4-mini-deep-research`、background モード+ポーリング)。Gemini 側は実装時に API 提供状況を確認しプロバイダ差し替え可能な interface で実装 | OpenAI キー/1回~$2 | v1(flag 制御。**Budget 有りのレジストリにのみ登録**・下記) |
 
 **共通契約**(`research/sources/base.py`):
 
@@ -280,6 +280,28 @@ class SourceConnector(Protocol):
 コネクタは**メタデータのみ**返す(本文取得は extract の fetcher に一元化)。ただし kokkai のように API が全文を返す場合は `contentText` を添付して fetch をスキップ。
 
 **Deep Research 補助の位置づけ**: gather の1レッグ。出力レポート本文は**最終成果物に直接使わない**。(a) citations → SourceHit 化(`deepResearchAssisted=true` フラグ)して通常の triage→extract→verify 検証パイプラインに通す、(b) 本文は verify のカバレッジ判定の参考入力のみ。予算残 <$3 なら自動スキップ。
+
+#### deep_research の配線(2026-07-15 有効化)
+
+1本 ~$2 と桁違いに高価なため、他コネクタと違い**入口が3つとも意図的に絞ってある**:
+
+| 何を | どこで | なぜ |
+|---|---|---|
+| **登録は Budget があるときだけ** | `sources/base.py::build_registry(budget=None)` | DR は one-shot ゲートと課金に `Budget` が要る。**Budget を渡さない呼び出し元(リサーチチャット)には DR が存在しない** — チャットの予算は1メッセージ $0.7〜$3 しかなく、$2 の道具を持たせてはいけない。チャット側は `VALID_CONNECTORS` でも弾いているが、それは deep_research が `STRATEGY_MATRIX` に無い限りの保証なので、**お金の側(レジストリ)にも保証を置く**二重防御 |
+| **注入は RQ[0] の末尾に1回だけ** | `phases/plan.py::_inject_deep_research()` | LLM に選ばせず**コードが決定的に**差し込む。`STRATEGY_MATRIX` に入れると (a) チャットへ波及し (b) `PLAN_SYSTEM` のコネクタ列挙(7種)の変更が要る。「テーマの中心的な問いへの1回だけの補助」なので先頭 RQ の末尾。冪等(resume で再実行しても増えない) |
+| **同一 Budget インスタンスの共有** | `harness.py::_make_ctx` | registry と `RunContext` に**別インスタンス**を渡すと `drCallsUsed` が別勘定になり、one-shot ゲートが効かず二重課金する |
+
+**コスト計上**(`deep_research.py::_charge`): DR の請求は**2階建て**で、トークンだけで見積もると数倍単位で過少計上になる。
+
+```
+cost = cost_usd("o4-mini-deep-research", usage.input_tokens, usage.output_tokens)   # $2.00/$8.00 per 1M
+     + tool_usage.web_search.num_requests × WEB_SEARCH_CALL_USD                     # $0.01/回($10/1,000回)
+```
+
+- フィールド名は 2026-07-15 に実 API(background モード)で確認済み: `usage.{input_tokens,output_tokens,total_tokens}` / `tool_usage.web_search.num_requests`。レスポンスには `billing` キーもあるが中身は `{"payer": "developer"}` だけで**金額を返さない**ため、自前計算が必要
+- 実測感(~$2/本)の内訳はほぼ web_search 側(例: 10万入力+2万出力で $0.36、web 検索90回で $0.90)。**tool 課金を無視するとキャップの精度が崩れる**
+- `usage` が取れない場合(ポーリングのタイムアウト等)は `DEEP_RESEARCH_FALLBACK_USD = 2.0` を課金する。呼んだ以上は課金されているので、**無音で $0 にするより見積りで積む**方が `usdCap` を守れる。API 呼び出し前に失敗した場合(接続エラー等)は課金せず one-shot も消費しない
+- **DR の HTTP は `openai_client` ではなく生 `httpx` 直呼び**のため **LangSmith には自動トレースされない**(`wrap_openai` の対象外)。`events.llm_call` にも載らず、`events.connector_search`(actor=`deep_research`)と構造化ログにのみ現れる
 
 ### 4.4 データモデル(Firestore + GCS)
 

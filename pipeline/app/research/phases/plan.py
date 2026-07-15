@@ -43,5 +43,21 @@ def run(ctx: RunContext) -> None:
     for rq in plan.rqs:
         valid = [s for s in rq.strategies if s in matrix]
         rq.strategies = valid or matrix[:4]
+    _inject_deep_research(plan)
     run.plan = plan
     repo.save(run)
+
+
+def _inject_deep_research(plan: ResearchPlan) -> None:
+    """Append the one Deep Research assist leg, to the FIRST RQ only (design §4.3).
+
+    Deliberately deterministic rather than a strategy the planner may choose:
+    `deep_research` is kept out of STRATEGY_MATRIX (and so out of PLAN_SYSTEM's
+    connector list) because it costs ~$2 a call, and code placing it exactly once
+    matches the connector's one-shot budget gate better than asking an LLM to
+    ration it. Last in the list, on the theme's central question — it is an assist,
+    never a primary source. It self-skips when the provider is off or the budget is
+    tight, and is absent from the registry entirely unless a Budget was supplied.
+    """
+    if plan.rqs and "deep_research" not in plan.rqs[0].strategies:
+        plan.rqs[0].strategies.append("deep_research")

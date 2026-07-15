@@ -85,11 +85,24 @@ class HttpConnector:
 # Registry                                                                     #
 # --------------------------------------------------------------------------- #
 
-def build_registry() -> dict[str, SourceConnector]:
+def build_registry(budget=None) -> dict[str, SourceConnector]:
     """Instantiate the v1 connectors. Imported lazily to avoid a heavy import at
-    module load and to keep each connector optional."""
+    module load and to keep each connector optional.
+
+    `deep_research` is registered ONLY when a `Budget` is supplied, because it is
+    the one connector that both costs real money per call (~$2) and needs the
+    one-shot//low-balance gate that lives on Budget. Callers that have no run
+    budget — research chat, whose whole per-message budget is $0.7–$3 — pass
+    nothing and simply do not get it. Chat's VALID_CONNECTORS also filters it out
+    today, but that only holds while `deep_research` stays out of STRATEGY_MATRIX;
+    this keeps the guarantee here, where the money is.
+
+    Pass the SAME Budget instance the RunContext uses — a second instance would
+    have its own drCallsUsed counter and the one-shot gate would stop holding.
+    """
     from app.research.sources.academic import AcademicConnector
     from app.research.sources.books import BooksConnector
+    from app.research.sources.deep_research import DeepResearchConnector
     from app.research.sources.gov_docs import GovDocsConnector
     from app.research.sources.ieee import IeeeConnector
     from app.research.sources.kokkai import KokkaiConnector
@@ -100,6 +113,8 @@ def build_registry() -> dict[str, SourceConnector]:
         KokkaiConnector(), AcademicConnector(), GovDocsConnector(), BooksConnector(),
         IeeeConnector(), NewsConnector(), WebGroundedConnector(),
     ]
+    if budget is not None:
+        connectors.append(DeepResearchConnector(budget=budget))
     return {c.name: c for c in connectors}
 
 

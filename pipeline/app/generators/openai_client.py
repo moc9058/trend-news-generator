@@ -23,6 +23,12 @@ PRICES = {
     "o4-mini-deep-research": (2.00, 8.00),
 }
 
+# Built-in web_search tool, billed PER CALL on top of tokens — $10.00/1k calls for
+# reasoning models (o-series/gpt-5), verified on the pricing page 2026-07-15. Only
+# the Deep Research connector uses it, and it is most of a DR call's real cost, so
+# pricing that call from tokens alone would undercount it several-fold.
+WEB_SEARCH_CALL_USD = 0.010
+
 
 @lru_cache
 def _client() -> OpenAI:

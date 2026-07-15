@@ -98,8 +98,12 @@ class ResearchHarness:
             return self._ctx_factory(run)
         from app.research.fetch.fetcher import Fetcher
         from app.research.sources.base import build_registry
-        return RunContext(run=run, budget=Budget(run.budget),
-                          registry=build_registry(), fetcher=Fetcher())
+        # One Budget, shared by the context and the registry: the deep_research
+        # connector's one-shot gate reads drCallsUsed off this very object, so a
+        # second instance would let it fire again and bill twice.
+        budget = Budget(run.budget)
+        return RunContext(run=run, budget=budget,
+                          registry=build_registry(budget), fetcher=Fetcher())
 
     def _cancelled(self, run_id: str) -> bool:
         cur = repo.get(run_id)

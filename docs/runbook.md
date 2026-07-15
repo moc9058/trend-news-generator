@@ -76,7 +76,9 @@ LLM 呼び出しの可視化のみを担う**任意の観測基盤**。UI は ht
 
 - ダッシュボードに当月 LLM コスト（runs.costUsd 集計）
 - X 投稿コストの目安: 短文 3件/日 × $0.015 + 記事 URL入り ≈ 月 $5 未満
-- **レポート費用**: 1本あたりハード上限 $10（`researchRuns.budget.usdCap`。超過は構造的に不可）。Deep Research を有効化した場合は +~$2/回（1本1回まで）
+- **レポート費用**: 1本あたりハード上限 $10（`researchRuns.budget.usdCap`。超過は構造的に不可）。Deep Research は +~$2/回（**1本1回まで**・予算残 <$3 で自動スキップ）
+- **Deep Research の費用の見方**（2026-07-15 に本番配線）: 実績は `researchRuns/{id}.budget.drCallsUsed`（0 か 1）と `usdSpent`。課金はトークン（$2/$8 per 1M）+ **web 検索1回 $0.01** の2階建てで、**金額の大半は web 検索側**。「DR が動いたのに usdSpent がほとんど増えない」なら tool 課金の計上漏れを疑う。ポーリングがタイムアウトすると実績が取れないため $2 の見積りを積む（構造化ログに `deep research usage missing` が出る）
+- **DR は LangSmith に出ない**: 生 `httpx` 直呼びで `openai_client` を経由しないため `wrap_openai` の対象外。トレースが無いのは正常。追跡は `events` の `connector_search`（connector=`deep_research`）と Cloud Logging の `deep research charged` 行で行う
 - **チャット費用**: 1メッセージあたりハード上限 quick $0.7 / deep $3（`config.py` の `chat_budget_*_usd`）。壁打ちは実費のみ。使った分は `chatUsage/{YYYY-MM}` に積まれ、ダッシュボードの当月コストに合算される。**上限は1メッセージ単位なので、月次の総額は使った回数次第** — 想定外に伸びたらここを見る
 - GCP 側は Billing コンソールで budget alert（$30）を設定推奨
 

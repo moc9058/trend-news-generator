@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット 6cdcccd + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py 追記 / Research Chat: `pipeline/tests/chat/` 9ファイル・84件を追加)
+> 対象コード時点: コミット 2b03190 + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py / M0-b: test_prompts.py・test_trusted_source_invariants.py / M0-c: test_deep_research_enablement.py / Research Chat: `pipeline/tests/chat/` 9ファイル・84件)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 11ファイル + `tests/chat/` 9ファイル、計256件・2026-07-15時点)をどう実行し、結果をどう読むか
+- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 12ファイル + `tests/chat/` 9ファイル、計270件・2026-07-15時点)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -45,10 +45,10 @@ uv run pytest -v -k "notion"
 **出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。2026-07-15 時点のコードでは全件成功し、次のようになります(所要 6〜7 秒)。
 
 ```text
-256 passed, 2 warnings in 7.55s
+270 passed, 2 warnings in 6.77s
 ```
 
-- `256 passed` — 256件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `270 passed` — 270件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -260,6 +260,28 @@ uv run pytest -v -k "notion"
 
 特筆: この5件は**LangGraph 移行(M1/M2)を跨いで assertion を変えずに持ち越す**設計です(実行の縫い目だけを `runner.run_research` に差し替える)。信頼モデルの弱体化はレビューではなく**テストの失敗**として現れます。作成時に4種の変異(tertiary 除外の削除・引用ゲートの無効化・strategy 検証の削除・証拠件数の下限引き下げ)を注入し、それぞれ対応するテストだけが落ちることを確認済みです。
 
+#### test_deep_research_enablement.py(13件)— Deep Research の配線と課金
+
+対象: `sources/deep_research.py` / `sources/base.py::build_registry()` / `phases/plan.py::_inject_deep_research()`。1本 ~$2 と桁違いに高価なコネクタを本番配線したため([10-research-agent.md](10-research-agent.md) §4.3)、「正しく課金されるか」と「意図した1箇所からしか呼べないか」を固定します。HTTP は行わず、`_start_and_poll` を偽レスポンスに差し替えます。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_build_registry_includes_deep_research_with_budget()` | Budget 付きなら登録され、**呼び出し元と同一の Budget インスタンス**を持つ(別勘定だと one-shot ゲートが壊れる) |
+| `test_build_registry_omits_deep_research_without_budget()` | **Budget 無し(= リサーチチャット)のレジストリには DR が存在しない**。チャットの予算は1メッセージ $0.7〜$3 |
+| `test_deep_research_stays_out_of_the_strategy_matrix()` | どのテーマ分類にも DR が入っていない(入るとチャットへ波及し、`PLAN_SYSTEM` の列挙変更も要る) |
+| `test_search_charges_tokens_and_web_searches()` | 課金が**トークン + web 検索 $0.01/回**の2階建て(例: $0.36 + $0.90) |
+| `test_search_charges_fallback_when_usage_missing()` | ポーリングのタイムアウト等で usage が無いときは $2 の見積りを課金(無音の $0 にしない) |
+| `test_search_tolerates_a_payload_without_tool_usage()` | `tool_usage` が無いレスポンスでもトークン分を課金して継続 |
+| `test_failed_call_is_free_and_non_fatal()` | 呼び出し前に失敗したら課金せず one-shot も消費しない。例外は握り潰して `[]` |
+| `test_one_shot_gate_blocks_a_second_call()` | `drCallsUsed>=1` なら API を叩かない |
+| `test_low_balance_gate_skips_without_charging()` | 予算残 <$3 なら API を叩かない |
+| `test_provider_off_skips()` | `deep_research_provider="off"` なら API を叩かない |
+| `test_plan_appends_deep_research_to_first_rq_only()` | RQ[0] の**末尾にのみ**注入(補助であって主要ソースではない) |
+| `test_inject_deep_research_is_idempotent()` | resume で plan を再実行しても増殖しない |
+| `test_inject_deep_research_handles_an_empty_plan()` | RQ が空でも例外にならない |
+
+特筆: 課金額の期待値は**実 API で確認した実測のフィールド名**(`usage.input_tokens` / `tool_usage.web_search.num_requests`)と**公開価格**($2/$8 per 1M、web 検索 $10/1,000回)に基づきます。レスポンスの `billing` キーは `{"payer": ...}` のみで金額を返さないため、自前計算が避けられません。
+
 ### 5. テスト ⇔ 機能文書の対応表
 
 | テストファイル | 件数 | 主な対象コード | 対応する機能文書 |
@@ -381,7 +403,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `256 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 11ファイル97件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `270 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 12ファイル111件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)** / **Deep Research の配線と課金(`test_deep_research_enablement.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 
