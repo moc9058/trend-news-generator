@@ -167,7 +167,7 @@ Source items (title / summary / url):
         category=category.name,
         date=today,
 ```
-(出典: `pipeline/app/generators/daily.py` の `generate_for_category()`。注意点が 1 つ — プロンプト内に本物の `{ }` を書きたいとき(JSON の例を見せるとき)は `{{ }}` と二重に書いてエスケープする。`prompts.py` に多数ある `{{` は誤記ではない)
+(出典: `pipeline/app/generators/short.py` の `generate_for_category()`。注意点が 1 つ — プロンプト内に本物の `{ }` を書きたいとき(JSON の例を見せるとき)は `{{ }}` と二重に書いてエスケープする。`prompts.py` に多数ある `{{` は誤記ではない)
 ### 3.9 ハッシュ・正規化・正規表現 — 重複排除の道具箱
 ハッシュは、どんなデータからも固定長の「指紋」を作る計算です(SHA-256 が代表)。同じ入力からは必ず同じ指紋ができ、逆算はできません。URL の指紋を Firestore のドキュメント ID にして二重保存を防ぎます(§6.5)。長すぎるので先頭 32 文字に切り詰めます。
 ```python

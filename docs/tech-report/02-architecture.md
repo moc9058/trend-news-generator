@@ -1,6 +1,6 @@
 # 02. アーキテクチャ — システム全体の構成図
 
-> 対象コード時点: コミット c694140 + 未コミット変更 / 最終更新: 2026-07-15(リサーチチャットの経路 §4.5 を追加)
+> 対象コード時点: コミット 707d54a + 未コミット変更 / 最終更新: 2026-07-15(§3 のシークレット構成を実測に合わせ LangSmith を反映 / リサーチチャットの経路 §4.5 を追加)
 
 trend-news-generator の全体像を図で示す文書である。ルート [README.md](../../README.md) にも構成図が 1 枚あるが、あちらは 5 分で読むための要約版であり、**システム構成の記述はこの文書(tech-report 側)が「正」**(食い違ったときに信じる側)となる(§8)。個々の処理の内部は [05-detailed-design/](05-detailed-design/01-pipeline-foundation.md) の各文書、設定値・IAM・cron の一覧は [04-parameters.md](04-parameters.md)、データ構造は [03-data-model.md](03-data-model.md) に譲り、本書は「何がどこにあり、どうつながって動くか」に集中する。
 
@@ -108,7 +108,7 @@ flowchart TB
 | sched-collect ほか計 6 本 | Cloud Scheduler | 上記ジョブの定時起動(job-seed を除く)。全て日本時間指定 | `infra/20-schedulers.sh` |
 | Firestore | データベース | `items`(収集アイテム)・`posts`(投稿)・`runs`(実行記録)・カテゴリやプロンプト等の設定群 | `infra/00-bootstrap.sh` |
 | trend-news-generator-media | GCS バケット | 収集画像(og:image)の置き場。完全非公開で、外部への受け渡しは期限付きの署名 URL のみ | 同上 |
-| シークレット ×7 | Secret Manager | OpenAI・Gemini・X・Threads・Notion・IEEE の鍵とトークン(暗号化保管の金庫) | `infra/01-secrets.sh` |
+| シークレット ×7 | Secret Manager | 必須6種(OpenAI・Gemini・X・Threads の token/user-id・Notion)+ **任意の LangSmith(トレーシング)**。任意枠には他に IEEE / Semantic Scholar もあるが本番では未登録(数は 2026-07-15 時点の実測)。**任意シークレットは「存在すれば注入」で、`langsmith-api-key` はその有無がトレーシングの唯一のスイッチ** — [05-detailed-design/08-infra.md](05-detailed-design/08-infra.md) §6.2。一覧の正は [04-parameters.md](04-parameters.md) §3 | `infra/01-secrets.sh` |
 | pipeline リポジトリ | Artifact Registry | Docker イメージ置き場(`pipeline:latest` と `admin:latest` の 2 つだけ) | `infra/00-bootstrap.sh` |
 | pipeline-sa / admin-sa / scheduler-sa | サービスアカウント ×3 | 権限の分離(§6) | 同上 |
 

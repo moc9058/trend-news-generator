@@ -358,7 +358,7 @@ stateDiagram-v2
 
 | 遷移 | トリガー | 実行コード |
 |---|---|---|
-| (生成) → `pending` | channelConfigs でそのチャネルが有効 | `generators/daily.py` / `generators/longform.py` の `generate_for_category()` |
+| (生成) → `pending` | channelConfigs でそのチャネルが有効 | `generators/short.py` / `generators/longform.py` の `generate_for_category()` |
 | (生成) → `skipped` | channelConfigs でそのチャネルが無効 | 同上 |
 | `pending` → `skipped` | 公開リクエストの `channels` に含めなかったチャネル(`enabled=false` も同時に設定) | `pipeline/app/main.py` の `publish()` |
 | `pending` → `published` | notion → x → threads の順の公開が成功し `externalId` を記録 | `publishers/base.py` の `_publish_notion()` / `_publish_x()` / `_publish_threads()` |

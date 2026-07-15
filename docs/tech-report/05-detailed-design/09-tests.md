@@ -59,7 +59,7 @@ uv run pytest -v -k "notion"
 
 **pytest** — Python の標準的なテスト実行ツール。`tests/` 内の `test_` で始まる関数を全部見つけて実行し、`assert 式`(「これは真のはず」という宣言)が偽になったら失敗として報告します。
 
-**pytest-asyncio と `asyncio_mode = "auto"`** — 非同期関数(`async def` で書かれた、待ち時間中に他の処理を進められる関数)のテストをそのまま書けるようにする追加設定です(`pipeline/pyproject.toml` で有効化)。ただし現在の 9 ファイルはすべて同期関数のテストで、この設定の出番はまだありません。将来 async のコードにテストを足しても追加設定なしで動く、という備えです。
+**pytest-asyncio と `asyncio_mode = "auto"`** — 非同期関数(`async def` で書かれた、待ち時間中に他の処理を進められる関数)のテストをそのまま書けるようにする追加設定です(`pipeline/pyproject.toml` で有効化)。ただし現在のテストはすべて同期関数を対象にしており、この設定の出番はまだありません(研究グラフの並列 fan-out も asyncio ではなくスレッドで動くため — [10-research-agent.md](10-research-agent.md) §4.1.3)。将来 async のコードにテストを足しても追加設定なしで動く、という備えです。
 
 **respx** — HTTP クライアント httpx の通信を横取りし、実際のサーバーに届く前に偽の応答を返すライブラリです。これがあるため、X や Notion に本当に投稿することなく HTTP 呼び出しコードを検証できます。**ただし現在のテストコードに respx の import はまだ登場しません**。dev 依存として導入済みで、プロジェクト方針(CLAUDE.md)として「HTTP をモックするなら respx」と決まっているものの、現行のテストは HTTP に到達する一歩手前の層(パース関数・署名関数・整形関数)と、HTTP 呼び出し部を丸ごと差し替えたオーケストレーション層を対象にしているためです。新たに HTTP 層そのもののテストを書くときに使います(12章に例)。
 
@@ -174,8 +174,8 @@ uv run pytest -v -k "notion"
 | `test_partial_failure_status()` | X だけ失敗 → 投稿全体は `partially_published`、当該チャネルは `failed` + エラー文言保存 |
 | `test_all_failed_status()` | 全チャネル失敗 → `failed` |
 | `test_only_channel_retry()` | `only_channel="x"` 指定時は他チャネルに触れない(管理画面のチャネル別リトライ) |
-| `test_daily_x_gets_no_url()` | 日次投稿の X 本文には Notion URL を付けない |
-| `test_weekly_x_teaser_gets_notion_url()` | 週次ティーザーの X 本文には Notion URL が追記される |
+| `test_short_x_gets_no_url()` | 日次投稿の X 本文には Notion URL を付けない |
+| `test_article_x_teaser_gets_notion_url()` | 週次ティーザーの X 本文には Notion URL が追記される |
 
 特筆: 投稿系ジョブが `--max-retries=0`(CLAUDE.md 参照)でも安全に手動リトライできる根拠が、このファイルの externalId / containerId の扱いです。ここを緩めると実サービスで二重投稿が起きます。
 
@@ -404,6 +404,17 @@ grep -rhoE '`[a-z_][A-Za-z0-9_.]*\(\)`' docs/tech-report --include='*.md' \
 
 注意: admin 側は関数の書き方が多様(アロー関数等)なため名前の出現だけを見る緩い判定です。「見つからない」と出たものが本当に消えたのか、書き方の問題なのかは目視で確定してください。
 
+**既知の偽陽性(2026-07-15 時点。これらが出るのは正常で、追いかける必要はありません)** — 検査は `pipeline/app` `pipeline/tests` `admin/src` しか見ないため、それ以外に定義がある/定義が存在しないのが正しいものが引っかかります:
+
+| 出るもの | なぜ正常か |
+|---|---|
+| `create_sched()` / `create_sched_oidc()` / `grant_invoker()` | `infra/20-schedulers.sh` の**bash 関数**。検査は Python/TS しか見ない |
+| `interrupt()` | **サードパーティ**(`langgraph.types`)。承認ゲートで使う([10-research-agent.md](10-research-agent.md) §4.1.2)。自前の `def` は無くて当然 |
+| `recent_by_cadence()` / `_weekly_summaries_for_month()` | [10-research-agent.md](10-research-agent.md) §9 の**リネーム履歴の記述**。「削除した」と書いてある関数なので、存在しないのが正しい |
+| `netloc.lower()` | 説明文中のプロパティ呼び出し(標準ライブラリ) |
+
+新しく出たものがこの表に無ければ、それは本物の陳腐化です。**この表に足す前に、まずコード側の改名・削除を疑ってください**(この手順が 2026-07-15 に実際に拾った例: `generators/daily.py`→`short.py` の未追従が3文書、削除済み `recent_by_cadence` の残存、`test_daily_x_gets_no_url`→`test_short_x_gets_no_url` の未追従)。
+
 ### 9. 手順3: パラメーター突合
 
 [../04-parameters.md](../04-parameters.md) の表を、値の実際の出所と**1行ずつ**照合します。出所は次の4つです。
@@ -445,6 +456,8 @@ for k, v in d.items(): print(f'{k}: {v}')"
 
 1. [../03-data-model.md](../03-data-model.md) の enum 表 — 文書側
 2. `pipeline/app/models.py` の enum クラス(`Format` / `Channel` / `PostStatus` / `ChannelStatus` / `SourceType`)、`pipeline/app/research/schemas.py` の `ResearchRunStatus`(researchRunStatuses に対応)、`pipeline/app/main.py` の `JOB_MODULES`(jobTypes に対応)— Python 側は JSON を読み込まず**手で複製されている**ため、値を変えたら両方直す必要があります
+
+   **`jobTypes` と `JOB_MODULES` は意図的に一致しません** — `JOB_MODULES` にだけ `generate_report` があります。`jobTypes` は admin の設定画面の「今すぐ実行」ボタンを生やす一覧で、レポート調査は**キュー消費型**(admin は `POST /api/research/runs` で run を積み、job がそれを lease して処理する)なので、手動実行ボタンを出さないのが正しい設計です。差分を見つけても埋めないこと。他の enum は完全一致が正。
 3. admin 側 — `admin/scripts/sync-constants.mjs` が prebuild で JSON をコピーする仕組みのため、値の変更後は **admin の再ビルドが必要**です
 
 ### 11. 手順5: pytest 実行 / 手順6: Mermaid とリンクの確認

@@ -245,7 +245,6 @@ def create_if_absent(item: Item) -> bool:
 | `set_status(post_id, status, **extra)` | `status` と任意の追加フィールドを部分更新 |
 | `update_channel(post_id, channel, state)` | `channels` のうち 1 チャネル分だけを丸ごと置き換え(dot-path) |
 | `update_fields(post_id, fields)` | 任意フィールドの部分更新(汎用) |
-| `recent_by_cadence(cadence, limit=20)` | カデンス別に新しい順で取得 |
 
 ##### set_status() / update_channel() / update_fields()
 

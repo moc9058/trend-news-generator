@@ -116,7 +116,7 @@ flowchart TB
 - **Research Chat(`chat_*` 10項目)は新規シークレット・新規 env var・新規 Cloud Run ジョブ/スケジューラのいずれも追加しない**。pipeline-api(既存の1サービス)にエンドポイントを増設するだけで、モデル呼び出しは既存の LangSmith 配線(§2 上記)と `research/llm.py` の予算計上経路をそのまま再利用する。詳細設計は [05-detailed-design/11-research-chat.md](05-detailed-design/11-research-chat.md)。
 - **`threads_app_secret` は未使用**。リポジトリ全体を検索した結果、参照は `pipeline/app/config.py` の宣言1箇所のみで、`.env.example` にも `infra/01-secrets.sh` にも登場しない。config.py のコメントは「トークン更新ジョブにのみ必要」と述べているが、実装(`publishers/threads.py` の `refresh_long_lived_token()`)は既存トークンだけで更新できる `th_refresh_token` 方式のため、アプリシークレットは不要になっている。コメントが実装より古い。
 - **「本番での上書き元: なし」の項目も、gcloud を手で実行すれば上書きできる**。CLAUDE.md の「本番ジョブには `GEMINI_MODEL` 等の env 上書きが入っている場合がある」はこの手動上書きを指す(infra スクリプト内には存在しない。§4.4)。モデル名を変える前は config.py のデフォルトと本番の実際の環境変数の両方を確認すること。
-- モデル名は Firestore の `promptTemplates` に `modelOverride` が設定されているカテゴリではそちらが優先される(`generators/daily.py` と `generators/longform.py` の `template.modelOverride or settings...`)。→ [03-data-model.md](03-data-model.md)
+- モデル名は Firestore の `promptTemplates` に `modelOverride` が設定されているカテゴリではそちらが優先される(`generators/short.py` と `generators/longform.py` の `template.modelOverride or settings...`)。→ [03-data-model.md](03-data-model.md)
 - `.env.example` に載っているのは一部の項目だけ(`TIMEZONE`・`THREADS_APP_SECRET`・モデル名各種・`THREADS_TOKEN_SECRET_NAME` は載っていない)。ローカルではデフォルト値で足りるため。
 
 ## 3. Secret Manager シークレット表
@@ -271,8 +271,8 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 |---|---|---|---|
 | `LOOKBACK_HOURS` | 36時間 | `generators/short.py` | 短文生成が対象にする収集アイテムの遡り範囲 |
 | `MAX_ITEMS` | 15件 | `generators/short.py` | 短文生成のプロンプトに入れる収集アイテムの最大数 |
-| 縮小リトライの目標長 | X 250(加重)/ Threads 480文字 | `generators/daily.py` の `_shrink_retry()` | 文字数超過時に1回だけ再生成する際の指示値(本来の上限 280 / 500 より安全マージンを取る) |
-| 最終トリム | 499文字+「…」 | `generators/daily.py` | 再生成後もなお Threads 上限を超える場合の強制切り詰め |
+| 縮小リトライの目標長 | X 250(加重)/ Threads 480文字 | `generators/short.py` の `_shrink_retry()` | 文字数超過時に1回だけ再生成する際の指示値(本来の上限 280 / 500 より安全マージンを取る) |
+| 最終トリム | 499文字+「…」 | `generators/short.py` | 再生成後もなお Threads 上限を超える場合の強制切り詰め |
 | `LOOKBACK` | 記事 168時間(7日) | `generators/longform.py` | 長文生成の対象期間 |
 | `MAX_CANDIDATES` | 120件 | `generators/longform.py` | 第1段階(選定)に渡す候補の上限 |
 | `MAX_SELECTED` | 25件 | `generators/longform.py` | 第2段階(執筆)に渡す採用アイテムの上限 |
