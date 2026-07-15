@@ -1,10 +1,10 @@
 # pipeline-api 詳細設計 — 管理画面から呼ばれる承認 API
 
-> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14(投稿削除エンドポイント追加)
+> 対象コード時点: コミット c694140 + 未コミット変更 / 最終更新: 2026-07-15(`/api/chat/*` と SSE 中継の route handler を追記)
 
 ## 1. この文書で分かること
 
-- Cloud Run サービス `pipeline-api`(FastAPI 製の小さな Web API)が持つ投稿・ジョブ系の全 5 エンドポイントの仕様と、管理画面(admin)からの呼ばれ方(レポート調査用の `/api/research/*` 3 本は [10-research-agent.md](10-research-agent.md) が担当)
+- Cloud Run サービス `pipeline-api`(FastAPI 製の小さな Web API)が持つ投稿・ジョブ系の全 5 エンドポイントの仕様と、管理画面(admin)からの呼ばれ方(レポート調査用の `/api/research/*` 3 本は [10-research-agent.md](10-research-agent.md)、リサーチチャット用の `/api/chat/*` 3 本は [11-research-chat.md](11-research-chat.md) が担当)
 - コードを読むと「無認証」に見えるこの API が、実際にはインフラ層(Cloud Run IAM)でどう守られているか
 - ジョブの手動実行が「受け付けたら即応答」になっている仕組み(実 Cloud Run Job の起動)と、実行結果をどこで確認するか
 
@@ -83,6 +83,8 @@ sequenceDiagram
 ### 4.3 この API が「小さい」理由
 
 docstring の最後の一文も設計上重要だ。投稿一覧や設定値など**表示のための読み書きは、管理画面が firebase-admin で Firestore を直接操作する**([07-admin-ui.md](07-admin-ui.md))。pipeline-api を通るのは「DB 更新にとどまらない副作用がある操作」= 外部 SNS への公開・再試行・**削除**・ジョブ起動(およびレポート調査 run の作成・中断・計画承認。[10-research-agent.md](10-research-agent.md))だけ。だから投稿・ジョブ系のエンドポイントは 5 つ(うち 1 つは死活確認)しかない。
+
+**リサーチチャットだけはこの構図から1点外れる**([11-research-chat.md](11-research-chat.md))。`POST /api/chat/messages` は応答を SSE で**流し続ける**ため、値を1つ返して終わる Server Action では受けられない。そこで admin 側に本リポジトリ唯一の route handler(`src/app/api/chat/stream/route.ts`)を置き、ブラウザが fetch できる URL を与えている。役割は IAP 由来の `requestedBy` と ID トークンの注入だけで、本文は変換せずそのまま素通しする(パースするとバッファされ、ストリーミングの意味が消える)。チャットの cancel / handoff は通常どおり Server Action 経由。
 
 ## 5. エンドポイントリファレンス
 

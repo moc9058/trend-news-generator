@@ -33,7 +33,8 @@ infra/00-bootstrap.sh → 01-secrets.sh(対話式・既定スキップ) → 10-d
   - `generators/` short(gpt-5.6-luna、旧 daily)・longform(article の2段階: luna で選定 → gpt-5.6-terra で長文)
   - `research/` **Research Agent(report フォーマット)= 決定的 Harness + 役割別 LLM の6フェーズ**。`harness.py`(フェーズ遷移・lease・resume・予算・cancel)/ `phases/`(plan→gather→extract→verify→write→review。ループバック verify→gather / review→write。旧 R0–R9/R7L は `schemas.py` の `LEGACY_PHASE_MAP` で読み替え)/ `sources/`(kokkai・academic・gov_docs・books・ieee・news・web_grounded・deep_research)/ `fetch/`(SSRF/robots/サイズガード・trafilatura/pypdf 抽出・GCS スナップショット・citecheck)/ `schemas.py` `state.py` `budget.py` `rubric.py` `llm.py`(pydantic 検証+予算計上+監査の唯一の LLM 経路)`prompts.py` `select.py`。モデルは planner/critic=gpt-5.6-sol、verifier/writer/localizer=gpt-5.6-terra、軽量系=gpt-5.6-luna。設計=`docs/tech-report/05-detailed-design/10-research-agent.md`
   - `publishers/` **公開順は notion → x → threads 固定**(長文ティーザーが Notion 公開URLを必要とするため)。externalId / Threads containerId で冪等
-  - `repo/` Firestore アクセス層。コレクション: `items` `posts` `runs` `categories` `sources` `channelConfigs` `promptTemplates` `researchRuns`(+サブコレクション evidence/claims/events)`settings/{app,channelHealth,notion}`。`research.py` は本リポジトリ唯一のトランザクション lease(`claim_next`)
+  - `chat/` **リサーチチャット(管理画面の個人用)= LangGraph StateGraph、1メッセージ=1実行**。`graph.py`(壁打ち chat / 調査 research の2モード。research は plan→search→select→read→(gap ループ≤1、deep のみ)→synthesize)/ `api.py`(SSE)/ `stream_llm.py` / `prompts.py`(英語)。research のコネクタ・Fetcher・rubric・Budget・`llm.structured` を再利用するが**状態の正は Firestore `chatThreads`**(チェックポインタ不使用)。設計=`docs/tech-report/05-detailed-design/11-research-chat.md`
+  - `repo/` Firestore アクセス層。コレクション: `items` `posts` `runs` `categories` `sources` `channelConfigs` `promptTemplates` `researchRuns`(+サブコレクション evidence/claims/events)`chatThreads`(+サブコレクション messages)`chatUsage` `settings/{app,channelHealth,notion}`。`research.py` は本リポジトリ唯一のトランザクション lease(`claim_next`)
   - `config.py` pydantic-settings。モデル名・シークレットは全てここ経由
   - `utils/observability.py` — **LangSmith(SaaS)トレーシング**。`langsmith-api-key` シークレットの有無が唯一のスイッチ(存在すれば `10-deploy-pipeline.sh` が `LANGSMITH_TRACING=true` ごと注入。消して再デプロイ = キルスイッチ)。`openai_client._client()` を `wrap_openai` で包むだけで、**予算計上は従来どおり自前**(`PRICES`/`cost_usd`)。トレース失敗は全て swallow — run を落とさない。プロンプト・生成文のフル送信は承認済み(runbook)
 - `admin/src/` — Firestore は firebase-admin で直接読み書き(`lib/data.ts` 読み取り、`lib/actions.ts` server actions)。公開・リトライ・ジョブ実行だけ ID トークン付きで pipeline-api を呼ぶ(`lib/pipelineClient.ts`)。認証は IAP(`lib/iap.ts` が `x-goog-authenticated-user-email` を読む)。UI 言語 ko/ja/en(next-intl、デフォルト ko)
@@ -46,6 +47,7 @@ infra/00-bootstrap.sh → 01-secrets.sh(対話式・既定スキップ) → 10-d
 - 承認フロー: 短文(short)は自動投稿、記事(article)/レポート(report)は下書き → 管理画面で承認。レポートは調査計画の承認ゲート(`planApproval`)も任意で有効化可
 - チャネル言語: X=日本語 / Threads=韓国語 / Notion=英語(`channelConfigs` で category×format×channel 単位に変更可)。レポートは canonical=ja → ja/ko/en を並行生成
 - レポート予算: 標準 ~$10/本 をハード上限(`budget.usdCap`)。Deep Research 補助は1本1回まで・予算残<$3 で自動スキップ
+- チャット: **チャット発の短文は `shortRequireApproval` に関係なく常に下書き**(handoff は投稿しない — 公開は既存の承認フローのみ)。予算は quick $0.7 / deep $3 をハード上限、月次実績は `chatUsage/{YYYY-MM}` に集計されダッシュボードのコストカードに載る
 - スケジュール(JST): 06:00 collect / 08:00 short / 月曜07:00 article / 毎月1日07:00 report(pipeline-api 直呼び・自動テーマ選定)/ 月曜03:00 Threads トークン更新
 
 ## 落とし穴
