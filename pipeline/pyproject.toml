@@ -24,6 +24,9 @@ dependencies = [
     # Upper-bounded on purpose (unlike the rest): we depend on 0.x SDK internals
     # (wrappers.wrap_openai, Client.flush), so a major bump needs re-probing.
     "langsmith>=0.10,<1",
+    # chat: the research-chat StateGraph (app/chat/graph.py). Upper-bounded for
+    # the same reason — we use the Runtime/context API and custom stream mode.
+    "langgraph>=1.2,<2",
 ]
 
 [project.optional-dependencies]

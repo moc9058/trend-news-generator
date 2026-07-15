@@ -1,7 +1,8 @@
-"""Thin OpenAI wrapper: JSON-mode chat call + token cost accounting."""
+"""Thin OpenAI wrapper: JSON-mode chat call, streaming chat call, cost accounting."""
 
 import json
 from functools import lru_cache
+from typing import Iterator
 
 from openai import OpenAI
 
@@ -61,3 +62,36 @@ def generate_json(
             6,
         )
     return json.loads(resp.choices[0].message.content or "{}")
+
+
+def stream_text(
+    model: str, system_prompt: str, messages: list[dict], usage: TokenUsage
+) -> Iterator[str]:
+    """Yield content deltas from one streaming completion (research chat, §5.3).
+
+    `messages` is the conversation so far as [{role, content}]; `system_prompt` is
+    prepended. Tokens/cost accumulate into `usage` — but only once the stream is
+    fully consumed, since OpenAI sends usage in a final chunk after the content.
+    A caller that abandons the iterator early therefore gets no cost recorded.
+    """
+    stream = _client().chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system_prompt}, *messages],
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    for chunk in stream:
+        # The usage-bearing final chunk carries no choices.
+        if chunk.usage:
+            usage.inputTokens += chunk.usage.prompt_tokens
+            usage.outputTokens += chunk.usage.completion_tokens
+            usage.costUsd = round(
+                usage.costUsd
+                + cost_usd(model, chunk.usage.prompt_tokens, chunk.usage.completion_tokens),
+                6,
+            )
+        if not chunk.choices:
+            continue
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
