@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 9ファイル + `tests/chat/` 9ファイル、計242件・2026-07-15時点)をどう実行し、結果をどう読むか
+- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 11ファイル + `tests/chat/` 9ファイル、計256件・2026-07-15時点)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -45,10 +45,10 @@ uv run pytest -v -k "notion"
 **出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。2026-07-15 時点のコードでは全件成功し、次のようになります(所要 6〜7 秒)。
 
 ```text
-242 passed, 2 warnings in 6.76s
+256 passed, 2 warnings in 7.55s
 ```
 
-- `242 passed` — 242件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `256 passed` — 256件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -230,6 +230,36 @@ uv run pytest -v -k "notion"
 
 特筆: `test_chat_repo.py` の Firestore 偽物は本スイートで唯一のもの(他ファイルは attribute monkeypatch で足りている)。`test_llm_seams.py` は Research Agent(doc 10)側の `llm.py` にチャット用の縫い目を追加した際の**非破壊性の証明**であり、doc 10 のテスト(`tests/research/*`)とは独立に両方通す必要があります。
 
+#### test_prompts.py(9件)— プロンプト自体のガード
+
+対象: `pipeline/app/research/prompts.py` の定数そのもの(LLM は呼びません)。「壊れても静かに壊れる」性質を機械的に守るためのファイルです。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_prompt_constants_are_discovered()` | ガードのガード。定数の集合が空なら以下の検査はすべて無意味に成功してしまうため、18個以上あることを先に確かめる |
+| `test_all_prompts_are_english_no_cjk()` | 全プロンプト定数に CJK(ひらがな/カタカナ/漢字/ハングル)が無い = 英語ポリシー([10-research-agent.md](10-research-agent.md) §6.5) |
+| `test_extract_prompt_keeps_injection_hardening()` | 間接プロンプトインジェクション対策の文言と `<<<DOCUMENT` フェンスが逐語で残る(§6.6) |
+| `test_plan_prompt_keeps_connector_and_theme_enums()` | プロンプトのコネクタ名7種・themeClass 6種が `STRATEGY_MATRIX` と一致。ズレると全 RQ が既定クラスへ黙って落ちる |
+| `test_trust_hierarchy_present_in_hardened_prompts()` | 信頼源ヒエラルキーが PLAN/TRIAGE に、tier 重み付けが VERIFY に存在し、`{_TRUST_HIERARCHY}` が未補間で残っていない |
+| `test_output_language_directives_survive()` | 信頼源強化で canonical=ja の出力言語指定を壊していない |
+| `test_every_system_prompt_demands_strict_json()` | 全 `*_SYSTEM` が "Return strictly the requested JSON" を含む(JSON モードの前提) |
+| `test_system_prompts_have_no_unresolved_placeholders()` | `*_SYSTEM` は無加工で送られるため `{placeholder}` が残っていない(`LOCALIZE_SYSTEM` のみ例外) |
+| `test_prompt_version_reflects_prompt_changes()` | プロンプトを変えれば `PROMPT_VERSION` が変わる(定義時補間の担保。§6.5 の罠) |
+
+#### test_trusted_source_invariants.py(5件)— 信頼できる情報源の不変条件 【最重要級】
+
+対象: **パイプライン全体**(`ResearchHarness` を偽 LLM/コネクタで通貫実行)。「政府・議会記録・査読論文・一次資料を優先する」という本システムの核心が、プロンプトではなく**決定的コード**で守られていることを成果物レベルで証明します([10-research-agent.md](10-research-agent.md) §4.2)。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_plan_fixes_invalid_strategies_to_matrix()` | planner が存在しないコネクタ名を返しても `STRATEGY_MATRIX` が検証・修正する(全滅時は `matrix[:4]` = 官公・学術系) |
+| `test_strategy_matrix_never_leads_with_the_open_web()` | どのテーマ分類も `web_grounded` から始まらない。**例外として `society_culture` だけは web_grounded が academic より上位**(意図的な設計)であることも明示的に固定 |
+| `test_triage_drops_tertiary_and_caps_selection()` | tertiary は選定・証拠のどちらにも入らない。`MAX_SELECTED=20` の打ち切り |
+| `test_coverage_requires_tiered_evidence_loops_on_tertiary_only()` | RQ の解決には証拠2件以上かつ primary/secondary 1件以上。足りなければ resolved=false のまま gather へループバック |
+| `test_weak_claims_render_demoted()` | **LLM が `corroborated` と主張しても**、引用ゲートを通らない弱い根拠なら renderAs が断定にならない(`opinion_report` へ降格)= モデルはゲートを言葉で突破できない |
+
+特筆: この5件は**LangGraph 移行(M1/M2)を跨いで assertion を変えずに持ち越す**設計です(実行の縫い目だけを `runner.run_research` に差し替える)。信頼モデルの弱体化はレビューではなく**テストの失敗**として現れます。作成時に4種の変異(tertiary 除外の削除・引用ゲートの無効化・strategy 検証の削除・証拠件数の下限引き下げ)を注入し、それぞれ対応するテストだけが落ちることを確認済みです。
+
 ### 5. テスト ⇔ 機能文書の対応表
 
 | テストファイル | 件数 | 主な対象コード | 対応する機能文書 |
@@ -351,7 +381,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `242 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 9ファイル83件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `256 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 11ファイル97件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 
