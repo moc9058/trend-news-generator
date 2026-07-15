@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { ActionButton } from '@/components/ActionButton';
+import { AutomationCell } from '@/components/AutomationCell';
 import { Icon } from '@/components/icons';
+import { ManualRunPanel } from '@/components/ManualRunPanel';
+import { SaveForm } from '@/components/SaveForm';
 import {
-  btnCls, Card, Chip, EmptyState, linkCls, PageHeader, StatCard, StatusBadge, Table, tdCls,
+  Card, Chip, EmptyState, linkCls, PageHeader, StatCard, StatusBadge, Table, tdCls,
 } from '@/components/ui';
 import { runJobNow, runReportNow, saveAutomation } from '@/lib/actions';
 import { CHANNELS, FORMATS } from '@/lib/constants';
@@ -91,7 +93,12 @@ export default async function Dashboard({
 
       {/* ① automation: per category x format, with schedule + channel toggles */}
       <Card title={t('automation')} hint={t('automationHint')}>
-        <form action={saveAutomation}>
+        <SaveForm
+          action={saveAutomation}
+          saveLabel={tc('save')}
+          savedLabel={tc('saved')}
+          hint={<span className="text-xs text-slate-400">{t('channelToggleHint')}</span>}
+        >
           {visibleChannels.map((ch) => (
             <input key={ch} type="hidden" name="channels" value={ch} />
           ))}
@@ -134,39 +141,20 @@ export default async function Dashboard({
                           </td>
                         );
                       }
+                      const channelDefaults = Object.fromEntries(
+                        visibleChannels.map((ch) => [ch, configById.get(`${id}_${ch}`)?.enabled ?? false]),
+                      );
                       return (
                         <td key={fmt} className="py-3 pr-4 align-top">
                           <input type="hidden" name="ids" value={id} />
-                          <div className="space-y-1.5">
-                            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600">
-                              <input
-                                type="checkbox"
-                                name={`enabled_${id}`}
-                                defaultChecked={tpl.enabled}
-                                className="h-4 w-4 rounded border-line"
-                              />
-                              {t('generateOn')}
-                            </label>
-                            <div className="flex flex-wrap gap-1">
-                              {visibleChannels.map((ch) => {
-                                const cfg = configById.get(`${id}_${ch}`);
-                                return (
-                                  <label
-                                    key={ch}
-                                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line bg-paper/60 px-1.5 py-0.5 text-[11px] text-slate-500 has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      name={`ch_${id}_${ch}`}
-                                      defaultChecked={cfg?.enabled ?? false}
-                                      className="h-3 w-3 rounded border-line"
-                                    />
-                                    {CHANNEL_SHORT[ch]}
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
+                          <AutomationCell
+                            id={id}
+                            generateLabel={t('generateOn')}
+                            generateDefaultChecked={tpl.enabled}
+                            channels={visibleChannels}
+                            channelDefaults={channelDefaults}
+                            channelShortLabels={CHANNEL_SHORT}
+                          />
                         </td>
                       );
                     })}
@@ -175,20 +163,21 @@ export default async function Dashboard({
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex items-center gap-3">
-            <button type="submit" className={btnCls}>{tc('save')}</button>
-            <span className="text-xs text-slate-400">{t('channelToggleHint')}</span>
-          </div>
-        </form>
+        </SaveForm>
       </Card>
 
       {/* ③ manual run */}
       <Card title={t('generate')} hint={t('generateHint')}>
-        <div className="flex flex-wrap gap-2.5">
-          <ActionButton action={runJobNow.bind(null, 'generate_short')} label={t('short')} />
-          <ActionButton action={runJobNow.bind(null, 'generate_article')} label={t('article')} />
-          <ActionButton action={runReportNow} label={t('report')} />
-        </div>
+        <ManualRunPanel
+          visibleChannels={visibleChannels}
+          shortLabel={t('short')}
+          articleLabel={t('article')}
+          reportLabel={t('report')}
+          hint={t('manualChannelsHint')}
+          runShort={runJobNow.bind(null, 'generate_short')}
+          runArticle={runJobNow.bind(null, 'generate_article')}
+          runReport={runReportNow}
+        />
       </Card>
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-2">

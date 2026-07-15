@@ -8,11 +8,13 @@ export function ActionButton({
   label,
   confirmText,
   secondary,
+  disabled,
 }: {
   action: () => Promise<{ ok: boolean; detail: string }>;
   label: string;
   confirmText?: string;
   secondary?: boolean;
+  disabled?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<{ ok: boolean; detail: string } | null>(null);
@@ -21,7 +23,7 @@ export function ActionButton({
     <span className="inline-flex items-center gap-2">
       <button
         className={secondary ? btnSecondaryCls : btnCls}
-        disabled={pending}
+        disabled={pending || disabled}
         onClick={() => {
           if (confirmText && !window.confirm(confirmText)) return;
           startTransition(async () => setResult(await action()));

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
-import { btnCls, Card, inputCls, labelCls, PageHeader } from '@/components/ui';
+import { SaveForm } from '@/components/SaveForm';
+import { Card, inputCls, labelCls, PageHeader } from '@/components/ui';
 import { savePromptTemplate } from '@/lib/actions';
 import { getPromptTemplate } from '@/lib/data';
 
@@ -27,7 +28,12 @@ export default async function PromptEditPage({
     <div>
       <PageHeader title={id} hint={t('placeholders')} />
       <Card>
-        <form action={savePromptTemplate} className="space-y-4">
+        <SaveForm
+          action={savePromptTemplate}
+          saveLabel={tc('save')}
+          savedLabel={tc('saved')}
+          className="space-y-4"
+        >
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="categoryId" value={tpl?.categoryId ?? categoryId} />
           <input type="hidden" name="format" value={tpl?.format ?? format} />
@@ -95,8 +101,7 @@ export default async function PromptEditPage({
               {tc('enabled')}
             </label>
           </div>
-          <button type="submit" className={btnCls}>{tc('save')}</button>
-        </form>
+        </SaveForm>
       </Card>
     </div>
   );

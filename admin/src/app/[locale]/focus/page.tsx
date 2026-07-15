@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { btnCls, Card, Chip, inputCls, labelCls, PageHeader } from '@/components/ui';
+import { SaveForm } from '@/components/SaveForm';
+import { Card, Chip, inputCls, labelCls, PageHeader } from '@/components/ui';
 import { saveFocus } from '@/lib/actions';
 import { FORMATS } from '@/lib/constants';
 import { getCategories, getPromptTemplates } from '@/lib/data';
@@ -48,7 +49,12 @@ export default async function FocusPage({
                     </Link>
                   </div>
                   {tpl ? (
-                    <form action={saveFocus} className="space-y-3">
+                    <SaveForm
+                      action={saveFocus}
+                      saveLabel={tc('save')}
+                      savedLabel={tc('saved')}
+                      className="space-y-3"
+                    >
                       <input type="hidden" name="id" value={id} />
                       <label className={labelCls}>
                         {t('keywords')}
@@ -69,10 +75,7 @@ export default async function FocusPage({
                           className={`${inputCls} resize-y font-normal leading-relaxed`}
                         />
                       </label>
-                      <button type="submit" className={btnCls}>
-                        {tc('save')}
-                      </button>
-                    </form>
+                    </SaveForm>
                   ) : (
                     <p className="text-xs text-slate-400">{tp('notSeeded')}</p>
                   )}

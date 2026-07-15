@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/ActionButton';
+import { SaveForm } from '@/components/SaveForm';
 import {
-  btnCls, btnDangerCls, Card, Chip, EnabledBadge, inputCls, labelCls, PageHeader, Table, tdCls, thCls,
+  btnDangerCls, Card, Chip, EnabledBadge, inputCls, labelCls, PageHeader, Table, tdCls, thCls,
 } from '@/components/ui';
 import { SOURCE_TYPES } from '@/lib/constants';
 import { deleteSource, runJobNow, saveSource, toggleSource } from '@/lib/actions';
@@ -68,7 +69,13 @@ export default async function SourcesPage() {
       </Card>
 
       <Card title={t('addTitle')}>
-        <form action={saveSource} className="grid max-w-xl grid-cols-2 gap-4">
+        <SaveForm
+          action={saveSource}
+          saveLabel={tc('save')}
+          savedLabel={tc('saved')}
+          className="grid max-w-xl grid-cols-2 gap-4"
+          footerClassName="col-span-2 mt-1 flex items-center gap-3"
+        >
           <label className={labelCls}>
             {t('id')}
             <input name="id" className={inputCls} />
@@ -101,10 +108,7 @@ export default async function SourcesPage() {
             {t('query')}
             <input name="query" className={inputCls} />
           </label>
-          <div className="col-span-2">
-            <button type="submit" className={btnCls}>{tc('save')}</button>
-          </div>
-        </form>
+        </SaveForm>
       </Card>
     </div>
   );

@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { SaveForm } from '@/components/SaveForm';
 import { Card, PageHeader, Table, tdCls, thCls } from '@/components/ui';
 import { FORMATS, CHANNELS, LANGUAGES } from '@/lib/constants';
 import { saveChannelConfig } from '@/lib/actions';
@@ -36,34 +37,36 @@ export default async function ChannelsPage() {
                     const cfg = byId.get(id);
                     return (
                       <td key={channel} className={tdCls}>
-                        <form
+                        <SaveForm
                           action={async (formData: FormData) => {
                             'use server';
-                            await saveChannelConfig(
+                            return saveChannelConfig(
                               id, cat.slug, fmt, channel,
                               formData.get('enabled') === 'on',
                               String(formData.get('language') ?? 'en'),
                             );
                           }}
-                          className="flex items-center gap-2.5"
+                          saveLabel={tc('save')}
+                          savedLabel={tc('saved')}
+                          buttonClassName="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft disabled:opacity-40"
+                          footerClassName="mt-0 flex items-center gap-1.5"
                         >
-                          <input
-                            name="enabled"
-                            type="checkbox"
-                            defaultChecked={cfg?.enabled ?? false}
-                            className="h-4 w-4 rounded border-line"
-                          />
-                          <select
-                            name="language"
-                            defaultValue={cfg?.language ?? 'en'}
-                            className="rounded-md border border-line bg-white px-1.5 py-1 font-mono text-xs text-slate-700 focus:border-accent focus:outline-none"
-                          >
-                            {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
-                          </select>
-                          <button className="rounded-md px-2 py-1 text-xs font-medium text-accent transition-colors hover:bg-accent-soft">
-                            {tc('save')}
-                          </button>
-                        </form>
+                          <span className="flex items-center gap-2.5">
+                            <input
+                              name="enabled"
+                              type="checkbox"
+                              defaultChecked={cfg?.enabled ?? false}
+                              className="h-4 w-4 rounded border-line"
+                            />
+                            <select
+                              name="language"
+                              defaultValue={cfg?.language ?? 'en'}
+                              className="rounded-md border border-line bg-white px-1.5 py-1 font-mono text-xs text-slate-700 focus:border-accent focus:outline-none"
+                            >
+                              {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
+                            </select>
+                          </span>
+                        </SaveForm>
                       </td>
                     );
                   })}

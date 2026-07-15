@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/ActionButton';
 import { Icon, type IconName } from '@/components/icons';
-import { btnCls, Card, inputCls, labelCls, PageHeader, Table, tdCls } from '@/components/ui';
+import { SaveForm } from '@/components/SaveForm';
+import { Card, inputCls, labelCls, PageHeader, Table, tdCls } from '@/components/ui';
 import { JOB_TYPES } from '@/lib/constants';
 import { runJobNow, saveAppSettings } from '@/lib/actions';
 import { getAppSettings, getNotionDatabaseId, getRecentRuns } from '@/lib/data';
@@ -43,7 +44,12 @@ export default async function SettingsPage({
       <PageHeader title={t('title')} />
 
       <Card title={t('globalChannels')} hint={t('globalChannelsHint')}>
-        <form action={saveAppSettings} className="space-y-4 text-sm">
+        <SaveForm
+          action={saveAppSettings}
+          saveLabel={tc('save')}
+          savedLabel={tc('saved')}
+          className="space-y-4 text-sm"
+        >
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {CHANNEL_META.map(({ key, label }) => (
               <label
@@ -103,8 +109,7 @@ export default async function SettingsPage({
               </label>
             </div>
           </div>
-          <button type="submit" className={btnCls}>{tc('save')}</button>
-        </form>
+        </SaveForm>
       </Card>
 
       <Card title={t('advanced')} hint={t('advancedHint')}>

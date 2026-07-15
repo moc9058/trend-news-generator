@@ -8,22 +8,37 @@ import { db } from './firestore';
 import { iapUserEmail } from './iap';
 import * as pipeline from './pipelineClient';
 
+export type ActionResult = { ok: boolean; detail: string };
+
+/** Wraps a Firestore-writing action so save forms (via SaveForm) always get
+ * an { ok, detail } result instead of an unhandled server-action rejection. */
+async function saveResult(run: () => Promise<void>): Promise<ActionResult> {
+  try {
+    await run();
+    return { ok: true, detail: '' };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ---------- categories ----------
 
-export async function saveCategory(formData: FormData): Promise<void> {
-  const slug = String(formData.get('slug') ?? '').trim();
-  if (!slug) return;
-  await db().collection('categories').doc(slug).set(
-    {
-      name: String(formData.get('name') ?? slug),
-      searchHints: String(formData.get('searchHints') ?? '')
-        .split(',').map((s) => s.trim()).filter(Boolean),
-      sortOrder: Number(formData.get('sortOrder') ?? 0),
-      enabled: formData.get('enabled') === 'on',
-    },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+export async function saveCategory(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const slug = String(formData.get('slug') ?? '').trim();
+    if (!slug) throw new Error('slug is required');
+    await db().collection('categories').doc(slug).set(
+      {
+        name: String(formData.get('name') ?? slug),
+        searchHints: String(formData.get('searchHints') ?? '')
+          .split(',').map((s) => s.trim()).filter(Boolean),
+        sortOrder: Number(formData.get('sortOrder') ?? 0),
+        enabled: formData.get('enabled') === 'on',
+      },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 export async function toggleCategory(slug: string, enabled: boolean): Promise<void> {
@@ -33,21 +48,23 @@ export async function toggleCategory(slug: string, enabled: boolean): Promise<vo
 
 // ---------- sources ----------
 
-export async function saveSource(formData: FormData): Promise<void> {
-  const id = String(formData.get('id') ?? '').trim() || `src-${Date.now()}`;
-  await db().collection('sources').doc(id).set(
-    {
-      categoryId: String(formData.get('categoryId') ?? ''),
-      type: String(formData.get('type') ?? 'rss'),
-      url: String(formData.get('url') ?? ''),
-      query: String(formData.get('query') ?? ''),
-      enabled: formData.get('enabled') === 'on',
-      etag: '',
-      lastModified: '',
-    },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+export async function saveSource(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const id = String(formData.get('id') ?? '').trim() || `src-${Date.now()}`;
+    await db().collection('sources').doc(id).set(
+      {
+        categoryId: String(formData.get('categoryId') ?? ''),
+        type: String(formData.get('type') ?? 'rss'),
+        url: String(formData.get('url') ?? ''),
+        query: String(formData.get('query') ?? ''),
+        enabled: formData.get('enabled') === 'on',
+        etag: '',
+        lastModified: '',
+      },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 export async function toggleSource(id: string, enabled: boolean): Promise<void> {
@@ -62,42 +79,46 @@ export async function deleteSource(id: string): Promise<void> {
 
 // ---------- prompt templates ----------
 
-export async function savePromptTemplate(formData: FormData): Promise<void> {
-  const id = String(formData.get('id') ?? '');
-  if (!id) return;
-  await db().collection('promptTemplates').doc(id).set(
-    {
-      categoryId: String(formData.get('categoryId') ?? ''),
-      format: String(formData.get('format') ?? ''),
-      systemPrompt: String(formData.get('systemPrompt') ?? ''),
-      userPromptTemplate: String(formData.get('userPromptTemplate') ?? ''),
-      outlineSystemPrompt: String(formData.get('outlineSystemPrompt') ?? ''),
-      outlineUserPromptTemplate: String(formData.get('outlineUserPromptTemplate') ?? ''),
-      modelOverride: String(formData.get('modelOverride') ?? ''),
-      focusKeywords: String(formData.get('focusKeywords') ?? '')
-        .split(',').map((s) => s.trim()).filter(Boolean),
-      customInstructions: String(formData.get('customInstructions') ?? ''),
-      enabled: formData.get('enabled') === 'on',
-    },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+export async function savePromptTemplate(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const id = String(formData.get('id') ?? '');
+    if (!id) throw new Error('id is required');
+    await db().collection('promptTemplates').doc(id).set(
+      {
+        categoryId: String(formData.get('categoryId') ?? ''),
+        format: String(formData.get('format') ?? ''),
+        systemPrompt: String(formData.get('systemPrompt') ?? ''),
+        userPromptTemplate: String(formData.get('userPromptTemplate') ?? ''),
+        outlineSystemPrompt: String(formData.get('outlineSystemPrompt') ?? ''),
+        outlineUserPromptTemplate: String(formData.get('outlineUserPromptTemplate') ?? ''),
+        modelOverride: String(formData.get('modelOverride') ?? ''),
+        focusKeywords: String(formData.get('focusKeywords') ?? '')
+          .split(',').map((s) => s.trim()).filter(Boolean),
+        customInstructions: String(formData.get('customInstructions') ?? ''),
+        enabled: formData.get('enabled') === 'on',
+      },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 /** Focus page: per category x format keywords + free-form owner requests.
  * Merge-only so the (seeded) prompt bodies are never touched. */
-export async function saveFocus(formData: FormData): Promise<void> {
-  const id = String(formData.get('id') ?? '');
-  if (!id) return;
-  await db().collection('promptTemplates').doc(id).set(
-    {
-      focusKeywords: String(formData.get('focusKeywords') ?? '')
-        .split(',').map((s) => s.trim()).filter(Boolean),
-      customInstructions: String(formData.get('customInstructions') ?? ''),
-    },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+export async function saveFocus(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const id = String(formData.get('id') ?? '');
+    if (!id) throw new Error('id is required');
+    await db().collection('promptTemplates').doc(id).set(
+      {
+        focusKeywords: String(formData.get('focusKeywords') ?? '')
+          .split(',').map((s) => s.trim()).filter(Boolean),
+        customInstructions: String(formData.get('customInstructions') ?? ''),
+      },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 /** Per-channel default languages, used when the automation grid creates a
@@ -107,28 +128,30 @@ const DEFAULT_CHANNEL_LANGS: Record<string, string> = { x: 'ja', threads: 'ko', 
 /** Bulk save for the dashboard's automation grid: per category x format the
  * generation on/off (promptTemplates.enabled) and per visible channel the
  * channelConfigs on/off. Languages of existing configs are preserved. */
-export async function saveAutomation(formData: FormData): Promise<void> {
-  const ids = formData.getAll('ids').map(String);
-  const channels = formData.getAll('channels').map(String);
-  const existing = new Set(
-    (await db().collection('channelConfigs').select().get()).docs.map((d) => d.id),
-  );
-  const batch = db().batch();
-  for (const id of ids) {
-    batch.update(db().collection('promptTemplates').doc(id), {
-      enabled: formData.get(`enabled_${id}`) === 'on',
-    });
-    const [categoryId, format] = [id.slice(0, id.lastIndexOf('_')), id.slice(id.lastIndexOf('_') + 1)];
-    for (const channel of channels) {
-      const cfgId = `${id}_${channel}`;
-      const enabled = formData.get(`ch_${id}_${channel}`) === 'on';
-      const doc: Record<string, unknown> = { categoryId, format, channel, enabled };
-      if (!existing.has(cfgId)) doc.language = DEFAULT_CHANNEL_LANGS[channel] ?? 'en';
-      batch.set(db().collection('channelConfigs').doc(cfgId), doc, { merge: true });
+export async function saveAutomation(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const ids = formData.getAll('ids').map(String);
+    const channels = formData.getAll('channels').map(String);
+    const existing = new Set(
+      (await db().collection('channelConfigs').select().get()).docs.map((d) => d.id),
+    );
+    const batch = db().batch();
+    for (const id of ids) {
+      batch.update(db().collection('promptTemplates').doc(id), {
+        enabled: formData.get(`enabled_${id}`) === 'on',
+      });
+      const [categoryId, format] = [id.slice(0, id.lastIndexOf('_')), id.slice(id.lastIndexOf('_') + 1)];
+      for (const channel of channels) {
+        const cfgId = `${id}_${channel}`;
+        const enabled = formData.get(`ch_${id}_${channel}`) === 'on';
+        const doc: Record<string, unknown> = { categoryId, format, channel, enabled };
+        if (!existing.has(cfgId)) doc.language = DEFAULT_CHANNEL_LANGS[channel] ?? 'en';
+        batch.set(db().collection('channelConfigs').doc(cfgId), doc, { merge: true });
+      }
     }
-  }
-  await batch.commit();
-  revalidatePath('/', 'layout');
+    await batch.commit();
+    revalidatePath('/', 'layout');
+  });
 }
 
 // ---------- channel configs ----------
@@ -136,54 +159,60 @@ export async function saveAutomation(formData: FormData): Promise<void> {
 export async function saveChannelConfig(
   id: string, categoryId: string, format: string, channel: string,
   enabled: boolean, language: string,
-): Promise<void> {
-  await db().collection('channelConfigs').doc(id).set(
-    { categoryId, format, channel, enabled, language },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+): Promise<ActionResult> {
+  return saveResult(async () => {
+    await db().collection('channelConfigs').doc(id).set(
+      { categoryId, format, channel, enabled, language },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 // ---------- settings ----------
 
-export async function saveAppSettings(formData: FormData): Promise<void> {
-  await db().collection('settings').doc('app').set(
-    {
-      timezone: String(formData.get('timezone') ?? 'Asia/Tokyo'),
-      shortRequireApproval: formData.get('shortRequireApproval') === 'on',
-      xAllowUrlOnShort: formData.get('xAllowUrlOnShort') === 'on',
-      attachImages: formData.get('attachImages') === 'on',
-      globalChannels: {
-        x: formData.get('channel_x') === 'on',
-        threads: formData.get('channel_threads') === 'on',
-        notion: formData.get('channel_notion') === 'on',
+export async function saveAppSettings(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    await db().collection('settings').doc('app').set(
+      {
+        timezone: String(formData.get('timezone') ?? 'Asia/Tokyo'),
+        shortRequireApproval: formData.get('shortRequireApproval') === 'on',
+        xAllowUrlOnShort: formData.get('xAllowUrlOnShort') === 'on',
+        attachImages: formData.get('attachImages') === 'on',
+        globalChannels: {
+          x: formData.get('channel_x') === 'on',
+          threads: formData.get('channel_threads') === 'on',
+          notion: formData.get('channel_notion') === 'on',
+        },
       },
-    },
-    { merge: true },
-  );
-  await db().collection('settings').doc('notion').set(
-    { databaseId: String(formData.get('notionDatabaseId') ?? '') },
-    { merge: true },
-  );
-  revalidatePath('/', 'layout');
+      { merge: true },
+    );
+    await db().collection('settings').doc('notion').set(
+      { databaseId: String(formData.get('notionDatabaseId') ?? '') },
+      { merge: true },
+    );
+    revalidatePath('/', 'layout');
+  });
 }
 
 // ---------- drafts ----------
 
-export async function saveDraft(formData: FormData): Promise<void> {
-  const id = String(formData.get('id') ?? '');
-  if (!id) return;
-  const updates: Record<string, unknown> = {
-    title: String(formData.get('title') ?? ''),
-    summary: String(formData.get('summary') ?? ''),
-    body: String(formData.get('body') ?? ''),
-  };
-  for (const channel of ['x', 'threads'] as const) {
-    const text = formData.get(`${channel}Text`);
-    if (text !== null) updates[`channels.${channel}.text`] = String(text);
-  }
-  await db().collection('posts').doc(id).update(updates);
-  revalidatePath('/', 'layout');
+export async function saveDraft(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const id = String(formData.get('id') ?? '');
+    if (!id) throw new Error('id is required');
+    const updates: Record<string, unknown> = {
+      title: String(formData.get('title') ?? ''),
+      summary: String(formData.get('summary') ?? ''),
+      body: String(formData.get('body') ?? ''),
+    };
+    for (const channel of ['x', 'threads'] as const) {
+      const text = formData.get(`${channel}Text`);
+      if (text !== null) updates[`channels.${channel}.text`] = String(text);
+    }
+    await db().collection('posts').doc(id).update(updates);
+    revalidatePath('/', 'layout');
+  });
 }
 
 /** Delete a draft. Guarded to status=draft so published posts can never be
@@ -196,8 +225,6 @@ export async function deleteDraft(postId: string): Promise<void> {
   }
   revalidatePath('/', 'layout');
 }
-
-export type ActionResult = { ok: boolean; detail: string };
 
 export async function approveAndPublish(
   postId: string, channels: string[],
@@ -258,18 +285,20 @@ export async function deletePosts(postIds: string[]): Promise<ActionResult> {
 /** Save a report draft's per-language content. Only title/summary/body are
  * written, via dot-path, so publish-time fields (notionPageId/url) on other
  * languages are never clobbered (design §6.2 / P6). */
-export async function saveReportDraft(formData: FormData): Promise<void> {
-  const id = String(formData.get('id') ?? '');
-  const lang = String(formData.get('lang') ?? '');
-  if (!id || !lang) return;
-  const updates: Record<string, unknown> = {};
-  for (const field of ['title', 'summary', 'body'] as const) {
-    const value = formData.get(field);
-    if (value !== null) updates[`localizations.${lang}.${field}`] = String(value);
-  }
-  if (Object.keys(updates).length === 0) return;
-  await db().collection('posts').doc(id).update(updates);
-  revalidatePath('/', 'layout');
+export async function saveReportDraft(formData: FormData): Promise<ActionResult> {
+  return saveResult(async () => {
+    const id = String(formData.get('id') ?? '');
+    const lang = String(formData.get('lang') ?? '');
+    if (!id || !lang) throw new Error('id and lang are required');
+    const updates: Record<string, unknown> = {};
+    for (const field of ['title', 'summary', 'body'] as const) {
+      const value = formData.get(field);
+      if (value !== null) updates[`localizations.${lang}.${field}`] = String(value);
+    }
+    if (Object.keys(updates).length === 0) return;
+    await db().collection('posts').doc(id).update(updates);
+    revalidatePath('/', 'layout');
+  });
 }
 
 export async function launchResearchRun(formData: FormData): Promise<ActionResult> {

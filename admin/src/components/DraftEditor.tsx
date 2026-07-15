@@ -106,8 +106,8 @@ export function DraftEditor({ post }: { post: Post }) {
           className={btnSecondaryCls}
           disabled={pending}
           onClick={() => startTransition(async () => {
-            await saveDraft(persist());
-            setResult({ ok: true, detail: 'saved' });
+            const res = await saveDraft(persist());
+            setResult(res.ok ? { ok: true, detail: tc('saved') } : res);
           })}
         >
           {tc('save')}
@@ -201,7 +201,11 @@ export function DraftEditor({ post }: { post: Post }) {
             onClick={() => {
               if (!window.confirm(t('confirmPublish'))) return;
               startTransition(async () => {
-                await saveDraft(persist());
+                const saved = await saveDraft(persist());
+                if (!saved.ok) {
+                  setResult(saved);
+                  return;
+                }
                 const res = await approveAndPublish(post.id, selected);
                 setResult(res);
                 if (res.ok) router.refresh();

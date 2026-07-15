@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
+import { SaveForm } from '@/components/SaveForm';
 import {
-  btnCls, Card, EnabledBadge, inputCls, labelCls, PageHeader, Table, tdCls, thCls,
+  Card, EnabledBadge, inputCls, labelCls, PageHeader, Table, tdCls, thCls,
 } from '@/components/ui';
 import { getCategories } from '@/lib/data';
 import { saveCategory } from '@/lib/actions';
@@ -44,7 +45,13 @@ export default async function CategoriesPage() {
       </Card>
 
       <Card title={t('addTitle')}>
-        <form action={saveCategory} className="grid max-w-xl grid-cols-2 gap-4">
+        <SaveForm
+          action={saveCategory}
+          saveLabel={tc('save')}
+          savedLabel={tc('saved')}
+          className="grid max-w-xl grid-cols-2 gap-4"
+          footerClassName="col-span-2 mt-1 flex items-center gap-3"
+        >
           <label className={labelCls}>
             {t('slug')}
             <input name="slug" required className={inputCls} placeholder="business-economics" />
@@ -65,10 +72,7 @@ export default async function CategoriesPage() {
             <input name="enabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-line" />
             {tc('enabled')}
           </label>
-          <div className="col-span-2">
-            <button type="submit" className={btnCls}>{tc('save')}</button>
-          </div>
-        </form>
+        </SaveForm>
       </Card>
     </div>
   );

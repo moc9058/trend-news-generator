@@ -31,7 +31,8 @@
     "retry": "재시도",
     "runNow": "지금 실행",
     "none": "없음",
-    "confirmDelete": "이 항목을 삭제할까요?"
+    "confirmDelete": "이 항목을 삭제할까요?",
+    "saved": "저장했습니다"
   },
   "dashboard": {
     "title": "대시보드",
@@ -55,6 +56,7 @@
     "scheduleReport": "매월 1일 07:00 JST",
     "generate": "수동 실행",
     "generateHint": "숏폼은 생성 후 즉시 활성 채널에 자동 게시됩니다. 아티클·리포트는 초안을 만들고 승인 후 게시됩니다(리포트는 리서치 에이전트가 실행되며 주제는 자동 선정됩니다).",
+    "manualChannelsHint": "게시할 채널을 선택하세요. X / Threads는 숏폼만 지원하므로 선택 시 아티클·리포트 버튼이 비활성화됩니다.",
     "short": "숏폼 생성",
     "article": "아티클 생성",
     "report": "리포트 생성",

@@ -88,8 +88,8 @@ export function ReportDraftEditor({ post }: { post: Post }) {
             className={btnSecondaryCls}
             disabled={pending}
             onClick={() => startTransition(async () => {
-              await saveReportDraft(persist(lang));
-              setResult({ ok: true, detail: 'saved' });
+              const res = await saveReportDraft(persist(lang));
+              setResult(res.ok ? { ok: true, detail: tc('saved') } : res);
             })}
           >
             {`${tc('save')} (${lang})`}
@@ -139,7 +139,13 @@ export function ReportDraftEditor({ post }: { post: Post }) {
               onClick={() => {
                 if (!window.confirm(t('confirmPublish'))) return;
                 startTransition(async () => {
-                  for (const l of langs) await saveReportDraft(persist(l));
+                  for (const l of langs) {
+                    const saved = await saveReportDraft(persist(l));
+                    if (!saved.ok) {
+                      setResult(saved);
+                      return;
+                    }
+                  }
                   const res = await approveAndPublish(post.id, selected);
                   setResult(res);
                   if (res.ok) router.refresh();

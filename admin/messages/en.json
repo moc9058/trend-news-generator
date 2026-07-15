@@ -31,7 +31,8 @@
     "retry": "Retry",
     "runNow": "Run now",
     "none": "None",
-    "confirmDelete": "Delete this item?"
+    "confirmDelete": "Delete this item?",
+    "saved": "Saved"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -55,6 +56,7 @@
     "scheduleReport": "1st of month 07:00 JST",
     "generate": "Manual run",
     "generateHint": "Short posts publish to the enabled channels right after generation. Article/report create a draft and publish after approval (report launches the Research Agent with an auto-selected theme).",
+    "manualChannelsHint": "Pick the target channels. X / Threads only support short posts, so article/report are disabled while either is selected.",
     "short": "Generate short",
     "article": "Generate article",
     "report": "Generate report",
