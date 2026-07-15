@@ -226,17 +226,61 @@ def test_graph_failure_yields_error_event_and_persists_status(client, repo, fake
     assert "upstream exploded" in msg.error
 
 
-def test_cancelled_thread_marks_message_cancelled(client, repo, fake_graph):
-    # The thread is already flagged, so the poll sees it as soon as the run ends.
+def test_new_message_clears_a_stale_cancel_flag(client, repo):
     resp = _post(client)
     tid = dict(_parse_sse(resp.text))["meta"]["threadId"]
     repo.request_cancel(tid)
 
     events = _parse_sse(_post(client, threadId=tid).text)
-    # A new message clears the stale flag first — otherwise it would be born
-    # cancelled.
+    # Otherwise the next message would be born cancelled.
     assert repo.threads[tid].cancelRequested is False
     assert dict(events)["done"]["status"] == ChatMessageStatus.complete.value
+
+
+def test_cancel_during_a_short_answer_is_not_lost_to_the_poll_throttle(
+    repo, fake_graph, fake_sources, monkeypatch,
+):
+    """A cancel that lands mid-answer must mark the message `cancelled`.
+
+    Regression: every cancel check went through the 5s throttle, including the
+    final one. An answer that finished inside one interval was therefore always
+    finalised `complete` — the user pressed Stop and nothing happened, with no
+    trace it was ever requested. The terminal check now forces a fresh read.
+    """
+    monkeypatch.setattr(api_mod, "PING_SECONDS", 0.05)
+    # A throttle far longer than the run: only a forced read can observe this.
+    monkeypatch.setattr(api_mod, "CANCEL_POLL_SECONDS", 3600.0)
+    from app.main import app
+
+    thread = ChatThreadStub()
+    repo.threads["ct_pre"] = thread
+
+    # The flag is set while the graph is streaming.
+    def _stream(state, context=None, stream_mode=None, config=None):
+        context.budget.charge_usd(0.01)
+        yield {"type": "token", "data": {"delta": "partial"}}
+        repo.request_cancel("ct_pre")
+
+    class _G:
+        stream = staticmethod(_stream)
+
+    monkeypatch.setattr(api_mod, "build_graph", lambda: _G())
+
+    with TestClient(app) as c:
+        events = _parse_sse(_post(c, threadId="ct_pre").text)
+
+    assert dict(events)["done"]["status"] == ChatMessageStatus.cancelled.value
+    mid = dict(events)["meta"]["assistantMessageId"]
+    assert repo.messages[mid].status == ChatMessageStatus.cancelled.value
+
+
+class ChatThreadStub:
+    """Minimal stand-in for a ChatThread in the fake repo."""
+    def __init__(self):
+        self.id = "ct_pre"
+        self.title = ""
+        self.requestedBy = "me@example.com"
+        self.cancelRequested = False
 
 
 def test_cancel_endpoint(client, repo):

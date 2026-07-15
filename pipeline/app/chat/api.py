@@ -70,18 +70,25 @@ def _sse(event: str, data: dict) -> str:
 
 
 class _CancelPoller:
-    """Throttled view of chatThreads/{id}.cancelRequested."""
+    """Throttled view of chatThreads/{id}.cancelRequested.
+
+    Throttled because this is a Firestore read and it is polled between tokens.
+    The throttle is a latency/cost trade for *stopping early* — it must never
+    decide the final status, hence `check(force=True)`: an answer shorter than
+    the interval would otherwise finish as `complete` and the user's cancel
+    would vanish without a trace.
+    """
 
     def __init__(self, thread_id: str, interval: float = CANCEL_POLL_SECONDS):
         self._thread_id, self._interval = thread_id, interval
         self._last_check = 0.0
         self._cancelled = False
 
-    def __call__(self) -> bool:
+    def check(self, force: bool = False) -> bool:
         if self._cancelled:
             return True
         now = _monotonic()
-        if now - self._last_check < self._interval:
+        if not force and now - self._last_check < self._interval:
             return False
         self._last_check = now
         try:
@@ -90,6 +97,9 @@ class _CancelPoller:
             log.warning("cancel poll failed", extra={"fields": {
                 "thread": self._thread_id, "error": str(exc)}})
         return self._cancelled
+
+    def __call__(self) -> bool:
+        return self.check()
 
 
 def _monotonic() -> float:
@@ -220,7 +230,8 @@ def _run_graph(*, req: ChatMessageRequest, thread_id: str, depth: str,
                 events.put({"event": "sources", "data": data})
             elif kind == "status":
                 events.put({"event": "status", "data": data})
-        if cancel():
+        # force: the throttle exists to stop early, not to decide the outcome.
+        if cancel.check(force=True):
             status = ChatMessageStatus.cancelled.value
     except BaseException as exc:  # noqa: BLE001 — never leave a message streaming
         log.exception("chat run failed", extra={"fields": {
