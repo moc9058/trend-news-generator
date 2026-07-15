@@ -1,5 +1,14 @@
+# Also used by `gcloud builds submit` (infra/10-deploy-pipeline.sh) to pick the
+# upload set: gcloud falls back to .dockerignore when no .gcloudignore exists. So
+# anything listed here is kept out of the build context AND off the wire.
 tests/
 .env
 __pycache__/
 *.pyc
 .pytest_cache/
+# The local uv virtualenv — ~240MB, i.e. most of the upload. The image never uses
+# it (the Dockerfile installs with `uv pip install --system`), and shipping a venv
+# built against the host's interpreter would be wrong anyway.
+.venv/
+uv.lock
+*.egg-info/
