@@ -331,3 +331,31 @@ export async function approveResearchPlan(runId: string): Promise<ActionResult> 
   revalidatePath('/', 'layout');
   return result;
 }
+
+// ---------- research chat ----------
+
+export async function cancelChat(threadId: string): Promise<ActionResult> {
+  const result = await pipeline.cancelChatThread(threadId);
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+/** Send a chat answer to the short/article/report pipeline. Always produces a
+ * draft (or a queued research run) — never a published post. */
+export async function handoffChat(formData: FormData): Promise<ActionResult> {
+  const threadId = String(formData.get('threadId') ?? '');
+  const messageId = String(formData.get('messageId') ?? '');
+  const format = String(formData.get('format') ?? '');
+  const categoryId = String(formData.get('categoryId') ?? '');
+  const theme = String(formData.get('theme') ?? '');
+  if (!threadId || !messageId || !format) {
+    return { ok: false, detail: 'threadId, messageId and format are required' };
+  }
+  const result = await pipeline.chatHandoff({
+    threadId, messageId, format,
+    categoryId: categoryId || null,
+    theme: theme || null,
+  });
+  revalidatePath('/', 'layout');
+  return result;
+}

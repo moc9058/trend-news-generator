@@ -11,6 +11,7 @@ from app.models import (
     Channel,
     ChannelState,
     ChannelStatus,
+    ChatSeed,
     Format,
     Post,
     PostStatus,
@@ -38,16 +39,25 @@ def _shrink_retry(model: str, system: str, user: str, result: dict, usage: Token
     return generate_json(model, system, user + "\n\n" + feedback, usage)
 
 
-def generate_for_category(category: Category) -> Post | None:
+def generate_for_category(category: Category, seed: ChatSeed | None = None) -> Post | None:
+    """One short Post for `category`.
+
+    `seed` (a research-chat handoff, design doc 11 §5.6) replaces the recent-items
+    feed with the chat's own findings and sources, and forces status=draft.
+    """
     settings = get_settings()
     cfg_x = configs.channel_config(category.slug, Format.short, Channel.x)
     cfg_th = configs.channel_config(category.slug, Format.short, Channel.threads)
     cfg_no = configs.channel_config(category.slug, Format.short, Channel.notion)
-    if not any(c.enabled for c in (cfg_x, cfg_th, cfg_no)):
+    # A seeded run is an explicit request from the owner, so it proceeds even
+    # with every channel off — the draft is the deliverable; channels are chosen
+    # at approval time.
+    if seed is None and not any(c.enabled for c in (cfg_x, cfg_th, cfg_no)):
         return None
 
-    recent = items.recent_for_category(category.slug, LOOKBACK_HOURS, limit=MAX_ITEMS)
-    if not recent:
+    recent = [] if seed else items.recent_for_category(
+        category.slug, LOOKBACK_HOURS, limit=MAX_ITEMS)
+    if seed is None and not recent:
         log.info("no recent items", extra={"fields": {"category": category.slug}})
         return None
 
@@ -58,8 +68,10 @@ def generate_for_category(category: Category) -> Post | None:
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     keywords_str = ", ".join(template.focusKeywords)
+    items_block = (prompts.format_seed_for_prompt(seed) if seed
+                   else prompts.format_items_for_prompt(recent))
     user_prompt = template.userPromptTemplate.format(
-        items=prompts.format_items_for_prompt(recent),
+        items=items_block,
         category=category.name,
         date=today,
         language=LANG_NAMES.get(cfg_no.language, cfg_no.language),
@@ -72,6 +84,7 @@ def generate_for_category(category: Category) -> Post | None:
         user_prompt, template.userPromptTemplate, template.focusKeywords
     )
     user_prompt = prompts.apply_custom_instructions(user_prompt, template.customInstructions)
+    user_prompt += prompts.seed_block(seed)
     model = template.modelOverride or settings.openai_model_daily
     usage = TokenUsage()
     result = generate_json(model, template.systemPrompt, user_prompt, usage)
@@ -96,15 +109,24 @@ def generate_for_category(category: Category) -> Post | None:
                 image_path = it.imageRefs[0].gcsPath
                 break
 
+    # A chat handoff is ALWAYS a draft, whatever shortRequireApproval says: the
+    # owner asked for a piece from a conversation, not for it to go live (user
+    # decision, design doc 11 §2). Auto-publish stays scoped to the scheduled
+    # feed-driven run.
+    status = (PostStatus.draft if (seed or app.shortRequireApproval)
+              else PostStatus.approved)
+
     post = Post(
         format=Format.short,
         categoryId=category.slug,
-        status=PostStatus.draft if app.shortRequireApproval else PostStatus.approved,
+        status=status,
         title=str(result.get("notion_title", f"{category.name} — {today}")),
         summary=str(result.get("notion_summary", "")),
         body=str(result.get("notion_summary", "")),
         sourceItemIds=[it.id for it in recent],
         tokenUsage=usage,
+        chatThreadId=seed.threadId if seed else "",
+        chatMessageId=seed.messageId if seed else "",
         channels={
             "x": ChannelState(
                 enabled=cfg_x.enabled, lang=cfg_x.language, text=x_text,

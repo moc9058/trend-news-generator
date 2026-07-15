@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット 6cdcccd + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py 追記)
+> 対象コード時点: コミット 6cdcccd + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py 追記 / Research Chat: `pipeline/tests/chat/` 9ファイル・84件を追加)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(9ファイル・58件)をどう実行し、結果をどう読むか
+- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 9ファイル + `tests/chat/` 9ファイル、計242件・2026-07-15時点)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -42,13 +42,13 @@ uv run pytest -v -k "notion"
 ```
 `-v` はテスト名を1行ずつ表示、`-k` は名前に指定文字列を含むテストだけを選んで実行します。
 
-**出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。コミット f703290 時点のコードでは全件成功し、次のようになります(所要 1〜2 秒)。
+**出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。2026-07-15 時点のコードでは全件成功し、次のようになります(所要 6〜7 秒)。
 
 ```text
-========================= 58 passed, 1 warning in 2.16s =========================
+242 passed, 2 warnings in 6.76s
 ```
 
-- `58 passed` — 58件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `242 passed` — 242件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -212,6 +212,24 @@ uv run pytest -v -k "notion"
 | `test_delete_endpoint_404()` | 存在しない投稿 → 404 |
 | `test_delete_endpoint_ok()` | エンドポイント正常系(`channels` / `docDeleted` を含む 200 応答) |
 
+#### pipeline/tests/chat/(9ファイル・84件)— Research Chat
+
+対象: `pipeline/app/chat/`(`graph.py` `api.py` `schemas.py` `prompts.py`)と `pipeline/app/repo/chat.py`。設計は [11-research-chat.md](11-research-chat.md)。他の pipeline テストと同じく monkeypatch/偽物差し替えで完結し、外部通信は行いません。`tests/chat/conftest.py` に本サブディレクトリ専用の fixture(Firestore 偽物など)がまとまっています。
+
+| テストファイル | 件数 | 固定している振る舞い |
+|---|---|---|
+| `test_graph_chat_mode.py` | 4 | 壁打ち(chat)モード: トークンのストリーミング出力、履歴の組み立て、ツールを一切実行しないこと |
+| `test_graph_research_quick.py` | 10 | 調査モード・クイック(quick)の plan→search→select→read→synthesize 一連。重複排除、ソースの優先順位(tier)並び替え、引用番号の採番、予算・締切超過時の早期打ち切り、コネクタ失敗が全体を止めないこと |
+| `test_graph_research_deep.py` | 6 | 調査モード・ディープ(deep): LLM によるソース選定、ギャップ判定ループとその上限(`MAX_LOOPS=1`)、キャンセル |
+| `test_chat_api_sse.py` | 17 | `pipeline/app/chat/api.py` の SSE エンドポイント: イベント順序・フレーミング、永続化、キャンセル、ワーカースレッド異常終了時の終了保証(`_SENTINEL`) |
+| `test_chat_handoff.py` | 11 | 引き継ぎ(handoff): report → `seedContext` 付きの `queued` ResearchRun、short/article → 常に draft、404/409/400 の使い分け |
+| `test_seed_block.py` | 13 | `build_seed_block()` の出力、調査計画プロンプトへの注入、生成系(short/article)へのシード材料受け渡し、下書き強制の担保 |
+| `test_chat_repo.py` | 14 | `pipeline/app/repo/chat.py`: スレッド/メッセージの CRUD、トランザクションによる連番(`seq`)採番、履歴トリム、使用量(usage)の加算(**本スイート唯一の最小 Firestore 偽物を内蔵**) |
+| `test_llm_seams.py` | 6 | `llm.structured` / `openai_client` の既定動作が、追加された `event_sink` / `stream_text` の縫い目(seam)によって**変わっていない**ことを固定するピン留めテスト |
+| `test_stream_llm.py` | 3 | `stream_chat` の予算計上・監査の規律(`research/llm.py` の唯一の LLM 経路という原則を壊していないこと) |
+
+特筆: `test_chat_repo.py` の Firestore 偽物は本スイートで唯一のもの(他ファイルは attribute monkeypatch で足りている)。`test_llm_seams.py` は Research Agent(doc 10)側の `llm.py` にチャット用の縫い目を追加した際の**非破壊性の証明**であり、doc 10 のテスト(`tests/research/*`)とは独立に両方通す必要があります。
+
 ### 5. テスト ⇔ 機能文書の対応表
 
 | テストファイル | 件数 | 主な対象コード | 対応する機能文書 |
@@ -225,6 +243,7 @@ uv run pytest -v -k "notion"
 | `tests/test_publish_orchestration.py` | 8 | `pipeline/app/publishers/base.py` | [04-publish.md](04-publish.md)、[03-generate.md](03-generate.md)(Post の契約) |
 | `tests/test_api.py` | 10 | `pipeline/app/main.py` | [05-pipeline-api.md](05-pipeline-api.md)、[06-ops-jobs.md](06-ops-jobs.md)(ジョブ手動実行) |
 | `tests/test_keywords_cleanup.py` | 8 | `generators/prompts.py`・`collectors/gemini_grounded.py`・`jobs/cleanup_drafts.py` | [02-collect.md](02-collect.md)(キーワード収集)、[03-generate.md](03-generate.md)(キーワード生成)、[06-ops-jobs.md](06-ops-jobs.md)(下書き削除) |
+| `tests/chat/`(9ファイル) | 84 | `pipeline/app/chat/`・`pipeline/app/repo/chat.py` | [11-research-chat.md](11-research-chat.md) |
 
 ### 6. テストが無い領域(正直な一覧)と実運用での補い
 
@@ -332,7 +351,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `156 passed`(2026-07-15 時点。うち Research Agent が `tests/research/*` に81件 — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 6件)。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `242 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 9ファイル83件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

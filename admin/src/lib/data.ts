@@ -2,8 +2,8 @@
 
 import { db, toIso } from './firestore';
 import type {
-  AppSettingsDoc, Category, ChannelConfig, ChannelHealth, Claim, EvidenceRecord, Post,
-  PromptTemplate, ResearchEvent, ResearchRun, Run, Source,
+  AppSettingsDoc, Category, ChannelConfig, ChannelHealth, ChatMessage, ChatThread, Claim,
+  EvidenceRecord, Post, PromptTemplate, ResearchEvent, ResearchRun, Run, Source,
 } from './types';
 
 function mapPost(id: string, data: FirebaseFirestore.DocumentData): Post {
@@ -23,6 +23,8 @@ function mapPost(id: string, data: FirebaseFirestore.DocumentData): Post {
     approvedBy: data.approvedBy ?? '',
     researchRunId: data.researchRunId ?? '',
     localizations: data.localizations ?? {},
+    chatThreadId: data.chatThreadId ?? '',
+    chatMessageId: data.chatMessageId ?? '',
   };
 }
 
@@ -112,14 +114,20 @@ export async function getMonthCostUsd(): Promise<number> {
 }
 
 /** LLM spend: short/article costs live on `runs.costUsd`; report (Research
- * Agent) costs live on `researchRuns.budget.usdSpent` — the two never overlap. */
+ * Agent) costs live on `researchRuns.budget.usdSpent`; chat costs live on
+ * `chatUsage/{YYYY-MM}.costUsd` — the three never overlap.
+ *
+ * chatUsage is pre-aggregated per month rather than per document, so the whole
+ * collection is the all-time total and the current month's doc is this month's.
+ * Its month key is UTC, matching `start` here. */
 export async function getCostSummary(): Promise<{ monthUsd: number; totalUsd: number }> {
   const start = new Date();
   start.setUTCDate(1);
   start.setUTCHours(0, 0, 0, 0);
-  const [runs, research] = await Promise.all([
+  const [runs, research, chat] = await Promise.all([
     db().collection('runs').get(),
     db().collection('researchRuns').get(),
+    db().collection('chatUsage').get(),
   ]);
   let month = 0;
   let total = 0;
@@ -136,6 +144,12 @@ export async function getCostSummary(): Promise<{ monthUsd: number; totalUsd: nu
     total += cost;
     const created = data.createdAt?.toDate?.();
     if (created && created >= start) month += cost;
+  });
+  const monthKey = `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, '0')}`;
+  chat.docs.forEach((d) => {
+    const cost = d.data().costUsd ?? 0;
+    total += cost;
+    if (d.id === monthKey) month += cost;
   });
   return {
     monthUsd: Math.round(month * 100) / 100,
@@ -266,4 +280,60 @@ export async function getResearchEvents(runId: string, limit = 200): Promise<Res
       detail: data.detail ?? {},
     };
   });
+}
+
+/* ---------- Research Chat ---------- */
+
+function mapChatThread(id: string, data: FirebaseFirestore.DocumentData): ChatThread {
+  return {
+    id,
+    title: data.title ?? '',
+    requestedBy: data.requestedBy ?? '',
+    status: data.status ?? 'active',
+    cancelRequested: data.cancelRequested ?? false,
+    totals: { messages: data.totals?.messages ?? 0, costUsd: data.totals?.costUsd ?? 0 },
+    createdAt: toIso(data.createdAt),
+    lastMessageAt: toIso(data.lastMessageAt),
+  };
+}
+
+function mapChatMessage(id: string, data: FirebaseFirestore.DocumentData): ChatMessage {
+  return {
+    id,
+    seq: data.seq ?? 0,
+    role: data.role ?? 'user',
+    mode: data.mode ?? 'chat',
+    depth: data.depth ?? null,
+    content: data.content ?? '',
+    status: data.status ?? 'complete',
+    sources: data.sources ?? [],
+    usage: data.usage ?? null,
+    handoffs: (data.handoffs ?? []).map((h: FirebaseFirestore.DocumentData) => ({
+      format: h.format ?? '',
+      refId: h.refId ?? '',
+      at: toIso(h.at),
+    })),
+    error: data.error ?? '',
+    createdAt: toIso(data.createdAt),
+  };
+}
+
+export async function getChatThreads(limit = 30): Promise<ChatThread[]> {
+  const snap = await db().collection('chatThreads')
+    .where('status', '==', 'active')
+    .orderBy('lastMessageAt', 'desc').limit(limit).get();
+  return snap.docs.map((d) => mapChatThread(d.id, d.data()));
+}
+
+export async function getChatThread(id: string): Promise<ChatThread | null> {
+  const snap = await db().collection('chatThreads').doc(id).get();
+  return snap.exists ? mapChatThread(snap.id, snap.data()!) : null;
+}
+
+/** Ordered by `seq`, not createdAt: a user message and its reply can share a
+ * timestamp, and the assistant doc is created before its text exists. */
+export async function getChatMessages(threadId: string, limit = 100): Promise<ChatMessage[]> {
+  const snap = await db().collection('chatThreads').doc(threadId)
+    .collection('messages').orderBy('seq').limit(limit).get();
+  return snap.docs.map((d) => mapChatMessage(d.id, d.data()));
 }

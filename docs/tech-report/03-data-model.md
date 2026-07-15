@@ -1,6 +1,6 @@
 # 03. データモデル — Firestore コレクション仕様
 
-> 対象コード時点: コミット e073130 + 未コミット変更 / 最終更新: 2026-07-14
+> 対象コード時点: コミット 2c640f3 + 未コミット変更 / 最終更新: 2026-07-15(Research Chat の `chatThreads` / `chatThreads/{id}/messages` / `chatUsage` コレクションと、`posts` / `researchRuns` への chat 連携フィールド追加を反映)
 
 ## 1. この文書で分かること
 
@@ -28,8 +28,13 @@
 | `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | Harness extract | Harness・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
 | `researchRuns/{id}/claims` | `{claimId}` | Harness verify | Harness・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
 | `researchRuns/{id}/events` | 自動採番 | Harness 全フェーズ | admin | 追記専用の監査ログ(doc 10 §6.5) |
+| `chatThreads` | `ct_{YYYYMMDD}_{ランダム6}` | chat API(グラフ) | admin・chat API | Research Chat の会話 1 本(タイトル・状態・累計コスト) |
+| `chatThreads/{id}/messages` | 自動採番 | chat API(グラフ) | admin・chat API | 会話内の 1 メッセージ(ユーザー発言 or アシスタント応答) |
+| `chatUsage` | 固定書式 `YYYY-MM`(UTC) | chat API(`repo/chat.py` の `add_usage()`) | admin(`getCostSummary()`) | チャットの月次コスト集計(ダッシュボードのコストカード用) |
 
-> **研究系4コレクション(`researchRuns` とサブコレクション)は Research Agent(レポート)専用**で、pydantic 定義は `pipeline/app/research/schemas.py`、Firestore アクセスは `pipeline/app/repo/research.py`(本リポジトリ初のトランザクション lease を含む)。全フィールド表・JSON 例・docID 規約・状態機械は一次資料の [`05-detailed-design/10-research-agent.md`](05-detailed-design/10-research-agent.md) を参照。状態値 `researchRunStatuses`(queued / running / awaiting_plan_approval / awaiting_review / completed / failed / cancelled / budget_exhausted)は `shared/constants.json` にあり §7 の enum チェックリスト対象。複合インデックス `researchRuns(status ASC, createdAt ASC)`(§6 の #6)がキュー取得に必要。
+> **研究系4コレクション(`researchRuns` とサブコレクション)は Research Agent(レポート)専用**で、pydantic 定義は `pipeline/app/research/schemas.py`、Firestore アクセスは `pipeline/app/repo/research.py`(本リポジトリ初のトランザクション lease を含む)。全フィールド表・JSON 例・docID 規約・状態機械は一次資料の [`05-detailed-design/10-research-agent.md`](05-detailed-design/10-research-agent.md) を参照。状態値 `researchRunStatuses`(queued / running / awaiting_plan_approval / awaiting_review / completed / failed / cancelled / budget_exhausted)は `shared/constants.json` にあり §7 の enum チェックリスト対象。複合インデックス `researchRuns(status ASC, createdAt ASC)`(§6 の #6)がキュー取得に必要。`trigger` は `manual` / `scheduled` に加え Research Chat からのレポート・ハンドオフを表す `chat` を取り得る(値そのものは既存の自由文字列フィールドで enum 化はされていない)。`trigger == "chat"` のときだけ `seedContext: {threadId, messageId, summary, sources[{url, title, snippet}]} | null` が設定され、plan フェーズが「検証すべき前提」として参照する(既存の裏取りを鵜呑みにはしない。doc 11 §5.6)。
+>
+> **チャット系3コレクション(`chatThreads` とサブコレクション `messages`、および `chatUsage`)は Research Chat 専用**で、pydantic 定義は `pipeline/app/chat/schemas.py`、Firestore アクセスは `pipeline/app/repo/chat.py`。全フィールド表・処理フロー・難所解説は一次資料の [`05-detailed-design/11-research-chat.md`](05-detailed-design/11-research-chat.md)(§4.4)を参照。`ChatThread`: `{title, requestedBy, status("active"|"archived"), cancelRequested, totals{messages, costUsd}, createdAt, updatedAt, lastMessageAt}`。`ChatMessage`: `{seq, role("user"|"assistant"), mode("chat"|"research"), depth("quick"|"deep"|null), content, status("streaming"|"complete"|"error"|"cancelled"), sources[{n,url,title,tier,score,connector}], usage{costUsd,promptTokens,completionTokens,model}|null, handoffs[{format,refId,at}], error, createdAt}`。**表示順は `createdAt` ではなく `seq`**(`repo/chat.py` の `append_message()` がトランザクションで `totals.messages` から採番): ユーザー発言とその応答が同一クロックティックに書かれ得るうえ、アシスタント側ドキュメントは本文確定前に先に作られるため。取得した本文(fetch した web ページのテキスト、コード上の呼称は「readings」)は**意図的に永続化しない**(design doc 11 §5.5)ため、メッセージ 1 件のサイズは 1MiB 上限から十分に余裕がある。`chatUsage/{YYYY-MM}` は `{costUsd, messages}` を `finish_message()` 完了ごとに `firestore.Increment` で加算し、月キーは UTC(admin の既存の月次コスト集計と合わせるため)。単一フィールド並び替え(`chatThreads` は `lastMessageAt`、`messages` は `seq`)のみなので**複合インデックスは不要**(§6 参照)。
 
 ## 3. 各コレクション詳細
 
@@ -107,6 +112,7 @@
 | `publishedAt` | timestamp / null | 1 チャネル以上成功した時刻 | publish | pipeline のみ(**注: `types.ts` の `Post` には無い**) |
 | `researchRunId` | string | **report のみ**。生成元の `researchRuns/{id}`(監査・再現性の逆参照) | Research Harness review(handoff) | admin 読 |
 | `localizations` | map<lang, {title, summary, body, notionPageId?, url?}> | **report のみ**。ja/ko/en の言語別本文。言語別 Notion 3ページの ID/URL を公開時に格納(doc 10 §6.2) | Harness review(handoff)・publish | publish・admin 読 |
+| `chatThreadId` / `chatMessageId` | string | この下書きが Research Chat のハンドオフ由来のときだけ設定される、元会話・元メッセージへの逆参照(`chatThreads/{chatThreadId}/messages/{chatMessageId}`)。既定は空文字(doc 11 §5.6) | 生成(chat ハンドオフ経由の short/article/report) | admin 読(トレース用) |
 
 #### channels 内の ChannelState(重点解説)
 
@@ -272,6 +278,8 @@
 | `promptTemplates` | `{categoryId}_{format}` | 下記参照 |
 | `channelConfigs` | `{categoryId}_{format}_{channel}` | 下記参照 |
 | `settings` | 固定名 `app` / `notion` / `channelHealth` | `jobs/seed.py` |
+| `chatThreads` | `ct_{YYYYMMDD}_{ランダム6}`(`researchRuns` の `rr_{YYYYMMDD}_{ランダム6}` と同じ書式) | `repo/chat.py` の `new_thread_id()` |
+| `chatThreads/{id}/messages` | Firestore の自動採番。並び順は docID ではなく `seq`(§2 参照) | `repo/chat.py` の `append_message()` |
 
 items の URL 正規化(`canonicalize_url()`)は、小文字化・`www.` 除去・追跡用クエリパラメータ(`utm_*` や `fbclid` など)の除去・パラメータのソート・末尾スラッシュ除去を行う。これにより「同じ記事の少し違う URL」が同じ docID に落ち、`create_if_absent()` の作成専用書き込みと合わせて **URL 単位の完全重複排除**が成立する(収集の詳細は `05-detailed-design/02-collect.md`)。
 

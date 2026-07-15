@@ -1,6 +1,6 @@
 # 04. パラメーターシート — 設定値の一覧
 
-> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith)/ 最終更新: 2026-07-15
+> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith / Research Chat: `chat_*` 設定)/ 最終更新: 2026-07-15
 
 この文書は trend-news-generator が「いま、どういう設定値で動いているか」の一覧の**正**(基準表)である。値の意味・定義場所・変更時に触る場所だけを扱い、作業手順そのものは扱わない。
 
@@ -91,6 +91,16 @@ flowchart TB
 | `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
 | `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
 | `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
+| `chat_model`(`CHAT_MODEL`) | `gpt-5.6-sol` | なし | Research Chat の壁打ち(sparring)応答生成、および調査モード深掘り(deep)の統合(synthesize)を担う最上位判断モデル。doc 11 |
+| `chat_research_model`(`CHAT_RESEARCH_MODEL`) | `gpt-5.6-terra` | なし | Research Chat 調査モードのクイック(quick)統合(synthesize)モデル |
+| `chat_fast_model`(`CHAT_FAST_MODEL`) | `gpt-5.6-luna` | なし | Research Chat の軽量系(調査計画・ソース選定・ギャップ判定・スレッドタイトル自動生成・handoff 時のテーマ抽出)モデル |
+| `chat_budget_quick_usd`(`CHAT_BUDGET_QUICK_USD`) | `0.7` | なし | 調査モード・クイック(quick)1メッセージあたりのハード予算上限(USD) |
+| `chat_budget_deep_usd`(`CHAT_BUDGET_DEEP_USD`) | `3.0` | なし | 調査モード・ディープ(deep)1メッセージあたりのハード予算上限(USD) |
+| `chat_max_fetches_quick`(`CHAT_MAX_FETCHES_QUICK`) | `6` | なし | クイック(quick)1メッセージあたりの取得(fetch)上限件数 |
+| `chat_max_fetches_deep`(`CHAT_MAX_FETCHES_DEEP`) | `14` | なし | ディープ(deep)1メッセージあたりの取得(fetch)上限件数 |
+| `chat_history_max_messages`(`CHAT_HISTORY_MAX_MESSAGES`) | `40` | なし | LLM に渡す会話履歴の直近件数(トリム窓) |
+| `chat_wall_clock_quick_min`(`CHAT_WALL_CLOCK_QUICK_MIN`) | `3` | なし | クイック(quick)1メッセージのソフト実時間上限(分) |
+| `chat_wall_clock_deep_min`(`CHAT_WALL_CLOCK_DEEP_MIN`) | `10` | なし | ディープ(deep)1メッセージのソフト実時間上限(分) |
 | `langsmith_tracing`(`LANGSMITH_TRACING`) | `false`(bool) | `--set-env-vars`(**`langsmith-api-key` シークレットが存在する場合のみ** `true`) | LangSmith へのトレース送信の有効化フラグ。`utils/observability.py`。単独では効かない(下記) |
 | `langsmith_api_key`(`LANGSMITH_API_KEY`) | (空) | `--set-secrets`(langsmith-api-key:latest。シークレットが存在する場合のみ) | LangSmith API キー(`lsv2_...`)。`utils/observability.py` |
 | `langsmith_project`(`LANGSMITH_PROJECT`) | `trend-news-generator` | `--set-env-vars`(同上の条件付き) | トレースの送信先プロジェクト名。アプリコードは読まず、**LangSmith SDK が `os.environ` から直読する**(下記の注意) |
@@ -101,6 +111,7 @@ flowchart TB
 - **LangSmith のトレーシングは「フラグ+キー」の両方が揃って初めて有効**(`utils/observability.py` の `langsmith_enabled()`)。本番では `infra/10-deploy-pipeline.sh` が `langsmith-api-key` シークレットの有無を見て3つ全部をまとめて注入するので、**シークレットを消して再デプロイすればキルスイッチ**になる(env は毎デプロイ全置換のため確実に消える)。ローカルで有効化したい場合のみ `pipeline/.env` に `LANGSMITH_TRACING=true` を書く。トレース送信が失敗しても run は落ちない(全例外を swallow)。
 - **`LANGSMITH_*` だけは「①→④の4層」の外にもう1つ読み手がいる**(この表の他の項目と違う点)。LangSmith SDK は `Settings` を経由せず `os.environ` を**直接**見てトレースの ON/OFF を判定する。ところが `.env` ファイルは pydantic-settings が `Settings` に読み込むだけで `os.environ` には反映されないため、**ローカルで `.env` にだけ書くと「アプリは有効だと思っているのに SDK は無効のまま=トレースが1件も出ない」という無言の食い違い**が起きる(本番は Cloud Run が本物の環境変数を渡すので発生しない)。このため `utils/observability.py` の `_export_env()` が、有効化時に解決済みの値を `os.environ` へ書き戻して両者を一致させている。SDK 側は env 読み取りを lru_cache するので、キャッシュのクリアも同関数が行う。
 - 関連する罠: SDK は `LANGSMITH_*` より**レガシーな `LANGCHAIN_*` 名前空間を優先**する。`LANGCHAIN_TRACING_V2=false` が環境にあると `LANGSMITH_TRACING=true` を無言で打ち消す(本システムは `LANGCHAIN_*` を設定しないので通常は無関係だが、トレースが出ない時の調査ポイント)。
+- **Research Chat(`chat_*` 10項目)は新規シークレット・新規 env var・新規 Cloud Run ジョブ/スケジューラのいずれも追加しない**。pipeline-api(既存の1サービス)にエンドポイントを増設するだけで、モデル呼び出しは既存の LangSmith 配線(§2 上記)と `research/llm.py` の予算計上経路をそのまま再利用する。詳細設計は [05-detailed-design/11-research-chat.md](05-detailed-design/11-research-chat.md)。
 - **`threads_app_secret` は未使用**。リポジトリ全体を検索した結果、参照は `pipeline/app/config.py` の宣言1箇所のみで、`.env.example` にも `infra/01-secrets.sh` にも登場しない。config.py のコメントは「トークン更新ジョブにのみ必要」と述べているが、実装(`publishers/threads.py` の `refresh_long_lived_token()`)は既存トークンだけで更新できる `th_refresh_token` 方式のため、アプリシークレットは不要になっている。コメントが実装より古い。
 - **「本番での上書き元: なし」の項目も、gcloud を手で実行すれば上書きできる**。CLAUDE.md の「本番ジョブには `GEMINI_MODEL` 等の env 上書きが入っている場合がある」はこの手動上書きを指す(infra スクリプト内には存在しない。§4.4)。モデル名を変える前は config.py のデフォルトと本番の実際の環境変数の両方を確認すること。
 - モデル名は Firestore の `promptTemplates` に `modelOverride` が設定されているカテゴリではそちらが優先される(`generators/daily.py` と `generators/longform.py` の `template.modelOverride or settings...`)。→ [03-data-model.md](03-data-model.md)
@@ -298,7 +309,18 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 
 ※ Cloud Run のジョブ再実行(§4.3 の max-retries)とこの API リトライは別物。API リトライは1回のジョブ実行の中で同じ API 呼び出しをやり直すもので、二重投稿にならない粒度で適用されている。
 
-### 8.6 共有の列挙値ファイル(shared/constants.json)
+### 8.6 Research Chat
+
+| 定数 | 値 | 定義場所 | 意味 |
+|---|---|---|---|
+| `CONTENT_FLUSH_SECONDS` | 1.5秒 | `pipeline/app/chat/api.py` | ストリーミング中のアシスタント本文を Firestore へ増分保存する間隔。Firestore の書き込み上限(1ドキュメントあたり毎秒約1回)に余裕を持って収まるよう間引く |
+| `CANCEL_POLL_SECONDS` | 5.0秒 | `pipeline/app/chat/api.py` | キャンセル要否(`cancelRequested`)を Firestore に確認する間隔。トークン毎に読みに行くのは無駄なため間引く |
+| `PING_SECONDS` | 15秒 | `pipeline/app/chat/api.py` | SSE 応答が無音のときに keep-alive コメント(`: ping`)を送る間隔。プロキシ・ブラウザ側のタイムアウトを防ぐ |
+| `MAX_QUERIES` | quick 4 / deep 10 | `pipeline/app/chat/graph.py` | 調査モードで plan フェーズが生成する検索クエリの上限件数(深さ別) |
+| `MAX_SELECT` | quick 6 / deep 14 | `pipeline/app/chat/graph.py` | select フェーズが本文取得(read)の対象に選ぶソースの上限件数(深さ別) |
+| `MAX_LOOPS` | 1 | `pipeline/app/chat/graph.py` | ディープ(deep)のギャップ判定ループ(gap→search の再実行)の上限回数 |
+
+### 8.7 共有の列挙値ファイル(shared/constants.json)
 
 `shared/constants.json` には、フォーマット(short / article / report)・チャネル(x / threads / notion)・投稿ステータス・ソース種別・言語・レポート調査ステータス(`researchRunStatuses`)などの**列挙値**(取り得る値のリスト)が定義されている。これも「コードを変えないと変わらない値」の一種で、扱いに癖がある。
 
@@ -315,7 +337,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | Threads トークン | 原則触らない(毎週月曜 03:00 に自動更新) | 手動更新が必要になった場合 → [runbook](../runbook.md) |
 | 実行時刻(cron) | `infra/20-schedulers.sh` の `create_sched` 呼び出し行 | 編集して再実行(既存スケジューラは更新に切り替わる) |
 | ハードコード定数(§8) | 該当ソースコード | 修正 → `10-deploy-pipeline.sh`(admin 側の値は `11-deploy-admin.sh`)で再ビルド・再デプロイ |
-| 列挙値(フォーマット・チャネル等) | `shared/constants.json` と `pipeline/app/models.py` の両方(§8.6) | pipeline と admin の両方を再ビルド・再デプロイ |
+| 列挙値(フォーマット・チャネル等) | `shared/constants.json` と `pipeline/app/models.py` の両方(§8.7) | pipeline と admin の両方を再ビルド・再デプロイ |
 | 運用フラグ(承認・URL・画像) | 管理画面の Settings ページ | 保存すれば次のジョブ実行から有効(再デプロイ不要) |
 | チャネルの言語・有効/無効、プロンプト | 管理画面(`channelConfigs` / `promptTemplates`) | 同上。データ構造は [03-data-model.md](03-data-model.md) |
 | IAM・バケット・Firestore インデックス | `infra/00-bootstrap.sh` | 再実行(冪等=何度実行しても安全に同じ状態になる) |

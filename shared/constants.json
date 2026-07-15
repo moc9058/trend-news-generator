@@ -29,5 +29,8 @@
     "cleanup_drafts",
     "refresh_threads_token",
     "seed"
-  ]
+  ],
+  "chatModes": ["chat", "research"],
+  "chatDepths": ["quick", "deep"],
+  "chatMessageStatuses": ["streaming", "complete", "error", "cancelled"]
 }

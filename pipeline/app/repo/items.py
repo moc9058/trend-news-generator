@@ -48,6 +48,26 @@ def recent_for_category(category_id: str, hours: int, limit: int = 120) -> list[
     return [Item(id=d.id, **d.to_dict()) for d in docs]
 
 
+def recent_all(hours: int, limit: int = 200) -> list[Item]:
+    """Recent items across every category, newest first.
+
+    Research Chat's `internal_items` connector searches what this system has
+    already collected, and a chat question is not category-scoped the way
+    generation is — hence no categoryId filter. Keyword matching happens in
+    Python (Firestore has no full-text search).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    docs = (
+        db()
+        .collection(COLLECTION)
+        .where(filter=firestore.FieldFilter("collectedAt", ">=", cutoff))
+        .order_by("collectedAt", direction=firestore.Query.DESCENDING)
+        .limit(limit)
+        .get()
+    )
+    return [Item(id=d.id, **d.to_dict()) for d in docs]
+
+
 def get_many(item_ids: list[str]) -> list[Item]:
     refs = [db().collection(COLLECTION).document(i) for i in item_ids]
     return [

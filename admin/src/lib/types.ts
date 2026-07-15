@@ -36,6 +36,9 @@ export interface Post {
   // report format only
   researchRunId?: string;
   localizations?: Record<string, LocalizedContent>;
+  // set when the draft came from a chat handoff
+  chatThreadId?: string;
+  chatMessageId?: string;
 }
 
 export interface Category {
@@ -178,4 +181,47 @@ export interface ResearchEvent {
   error?: string;
   durationMs?: number;
   detail?: Record<string, unknown>;
+}
+
+/* ---------- Research Chat ---------- */
+
+export interface ChatSource {
+  n: number;
+  url: string;
+  title?: string;
+  tier?: string;
+  score?: number;
+  connector?: string;
+}
+
+export interface ChatHandoffRef {
+  format: string;
+  refId: string;
+  at?: string;
+}
+
+export interface ChatThread {
+  id: string;
+  title: string;
+  requestedBy?: string;
+  status: string;
+  cancelRequested?: boolean;
+  totals?: { messages: number; costUsd: number };
+  createdAt?: string;
+  lastMessageAt?: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  seq: number;
+  role: string;
+  mode: string;
+  depth?: string | null;
+  content: string;
+  status: string;
+  sources?: ChatSource[];
+  usage?: { costUsd: number; promptTokens: number; completionTokens: number; model?: string } | null;
+  handoffs?: ChatHandoffRef[];
+  error?: string;
+  createdAt?: string;
 }

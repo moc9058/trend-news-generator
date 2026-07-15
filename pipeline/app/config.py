@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     research_wall_clock_min: int = 40          # per-run soft wall-clock (within task-timeout)
     semantic_scholar_api_key: str = ""         # optional; connectors fall back without it
 
+    # --- Research Chat (admin-only chat; see docs/tech-report/05-detailed-design/11) ---
+    chat_model: str = "gpt-5.6-sol"             # sparring + deep synthesize (highest judgement)
+    chat_research_model: str = "gpt-5.6-terra"  # quick synthesize
+    chat_fast_model: str = "gpt-5.6-luna"       # plan/select/gap/title/handoff-theme
+    chat_budget_quick_usd: float = 0.7          # hard cap per quick research message
+    chat_budget_deep_usd: float = 3.0           # hard cap per deep research message
+    chat_max_fetches_quick: int = 6
+    chat_max_fetches_deep: int = 14
+    chat_history_max_messages: int = 40         # trim window sent to the LLM
+    chat_wall_clock_quick_min: int = 3
+    chat_wall_clock_deep_min: int = 10
+
     # --- Observability (LangSmith SaaS tracing; see app/utils/observability.py) ---
     # The SDK reads the same LANGSMITH_* env vars directly, so env stays the one
     # source. Tracing needs both the flag and a key — production sets both iff the

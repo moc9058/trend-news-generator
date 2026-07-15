@@ -5,11 +5,22 @@ import { GoogleAuth } from 'google-auth-library';
 
 const auth = new GoogleAuth();
 
-async function call(path: string, body: unknown): Promise<Response> {
+export function pipelineBaseUrl(): string {
   const base = process.env.PIPELINE_API_URL;
   if (!base) throw new Error('PIPELINE_API_URL is not configured');
-  const client = await auth.getIdTokenClient(base);
-  const token = await client.idTokenProvider.fetchIdToken(base);
+  return base;
+}
+
+/** ID token for pipeline-api. Exported so the chat SSE route handler can stream
+ * a response through itself rather than buffering it via `call()`. */
+export async function getIdToken(audience: string): Promise<string> {
+  const client = await auth.getIdTokenClient(audience);
+  return client.idTokenProvider.fetchIdToken(audience);
+}
+
+async function call(path: string, body: unknown): Promise<Response> {
+  const base = pipelineBaseUrl();
+  const token = await getIdToken(base);
   return fetch(`${base}${path}`, {
     method: 'POST',
     headers: {
@@ -75,5 +86,21 @@ export async function approveResearchPlan(
   approvedBy: string,
 ): Promise<{ ok: boolean; detail: string }> {
   const resp = await call(`/api/research/runs/${runId}/approve-plan`, { approvedBy });
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+/* ---------- Research Chat ---------- */
+
+export async function cancelChatThread(
+  threadId: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/chat/threads/${threadId}/cancel`, {});
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+export async function chatHandoff(
+  body: Record<string, unknown>,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call('/api/chat/handoff', body);
   return { ok: resp.ok, detail: await resp.text() };
 }

@@ -19,6 +19,8 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.models import ChatSeedSource
+
 
 # --------------------------------------------------------------------------- #
 # Enums (research-internal; researchRunStatuses is also mirrored in            #
@@ -328,6 +330,18 @@ class BudgetState(BaseModel):
     drCallsUsed: int = 0
 
 
+class ChatSeedContext(BaseModel):
+    """Where a chat-triggered run came from (design doc 11 §5.6).
+
+    The plan phase feeds this to the planner as prior work to build on and verify
+    independently — never as established fact.
+    """
+    threadId: str = ""
+    messageId: str = ""
+    summary: str = ""
+    sources: list[ChatSeedSource] = []
+
+
 class ResearchRun(BaseModel):
     id: str = ""  # rr_{YYYYMMDD}_{rand6}
     trigger: str = "manual"
@@ -351,6 +365,10 @@ class ResearchRun(BaseModel):
     plan: Optional[ResearchPlan] = None
     postId: Optional[str] = None
     error: str = ""
+    # trigger="chat" only: the conversation this run was handed off from.
+    # MUST live on the model — repo.save() does a full model_dump overwrite, so a
+    # field written straight to Firestore would vanish on the next phase boundary.
+    seedContext: Optional[ChatSeedContext] = None
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
 

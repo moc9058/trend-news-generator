@@ -159,6 +159,9 @@ class Post(BaseModel):
     # report format only (design §4.4)
     researchRunId: str = ""
     localizations: dict[str, LocalizedContent] = {}
+    # set when this draft came from a research-chat handoff (design doc 11 §5.6)
+    chatThreadId: str = ""
+    chatMessageId: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -214,3 +217,25 @@ class AppSettings(BaseModel):
     globalChannels: dict[str, bool] = Field(
         default_factory=lambda: {"x": False, "threads": False, "notion": True}
     )
+
+
+# --------------------------------------------------------------------------- #
+# Research Chat → generation handoff (design doc 11 §5.6)                      #
+# --------------------------------------------------------------------------- #
+# Defined here rather than in app/chat/schemas.py so `generators/` need not
+# import `chat/`: both already depend on this module, and the seed is shared
+# vocabulary between them.
+
+class ChatSeedSource(BaseModel):
+    url: str
+    title: str = ""
+    snippet: str = ""
+
+
+class ChatSeed(BaseModel):
+    """Material carried from a chat answer into short/article generation."""
+    threadId: str = ""
+    messageId: str = ""
+    theme: str = ""
+    summary: str = ""   # the assistant message the user chose
+    sources: list[ChatSeedSource] = []
