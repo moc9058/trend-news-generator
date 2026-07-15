@@ -34,7 +34,7 @@
 
 > **研究系4コレクション(`researchRuns` とサブコレクション)は Research Agent(レポート)専用**で、pydantic 定義は `pipeline/app/research/schemas.py`、Firestore アクセスは `pipeline/app/repo/research.py`(本リポジトリ初のトランザクション lease を含む)。全フィールド表・JSON 例・docID 規約・状態機械は一次資料の [`05-detailed-design/10-research-agent.md`](05-detailed-design/10-research-agent.md) を参照。状態値 `researchRunStatuses`(queued / running / awaiting_plan_approval / awaiting_review / completed / failed / cancelled / budget_exhausted)は `shared/constants.json` にあり §7 の enum チェックリスト対象。複合インデックス `researchRuns(status ASC, createdAt ASC)`(§6 の #6)がキュー取得に必要。`trigger` は `manual` / `scheduled` に加え Research Chat からのレポート・ハンドオフを表す `chat` を取り得る(値そのものは既存の自由文字列フィールドで enum 化はされていない)。`trigger == "chat"` のときだけ `seedContext: {threadId, messageId, summary, sources[{url, title, snippet}]} | null` が設定され、plan フェーズが「検証すべき前提」として参照する(既存の裏取りを鵜呑みにはしない。doc 11 §5.6)。
 >
-> **チャット系3コレクション(`chatThreads` とサブコレクション `messages`、および `chatUsage`)は Research Chat 専用**で、pydantic 定義は `pipeline/app/chat/schemas.py`、Firestore アクセスは `pipeline/app/repo/chat.py`。全フィールド表・処理フロー・難所解説は一次資料の [`05-detailed-design/11-research-chat.md`](05-detailed-design/11-research-chat.md)(§4.4)を参照。`ChatThread`: `{title, requestedBy, status("active"|"archived"), cancelRequested, totals{messages, costUsd}, createdAt, updatedAt, lastMessageAt}`。`ChatMessage`: `{seq, role("user"|"assistant"), mode("chat"|"research"), depth("quick"|"deep"|null), content, status("streaming"|"complete"|"error"|"cancelled"), sources[{n,url,title,tier,score,connector}], usage{costUsd,promptTokens,completionTokens,model}|null, handoffs[{format,refId,at}], error, createdAt}`。**表示順は `createdAt` ではなく `seq`**(`repo/chat.py` の `append_message()` がトランザクションで `totals.messages` から採番): ユーザー発言とその応答が同一クロックティックに書かれ得るうえ、アシスタント側ドキュメントは本文確定前に先に作られるため。取得した本文(fetch した web ページのテキスト、コード上の呼称は「readings」)は**意図的に永続化しない**(design doc 11 §5.5)ため、メッセージ 1 件のサイズは 1MiB 上限から十分に余裕がある。`chatUsage/{YYYY-MM}` は `{costUsd, messages}` を `finish_message()` 完了ごとに `firestore.Increment` で加算し、月キーは UTC(admin の既存の月次コスト集計と合わせるため)。単一フィールド並び替え(`chatThreads` は `lastMessageAt`、`messages` は `seq`)のみなので**複合インデックスは不要**(§6 参照)。
+> **チャット系3コレクション(`chatThreads` とサブコレクション `messages`、および `chatUsage`)は Research Chat 専用**で、pydantic 定義は `pipeline/app/chat/schemas.py`、Firestore アクセスは `pipeline/app/repo/chat.py`。全フィールド表・処理フロー・難所解説は一次資料の [`05-detailed-design/11-research-chat.md`](05-detailed-design/11-research-chat.md)(§4.4)を参照。`ChatThread`: `{title, requestedBy, status("active"|"archived"), cancelRequested, totals{messages, costUsd}, createdAt, updatedAt, lastMessageAt}`。`ChatMessage`: `{seq, role("user"|"assistant"), mode("chat"|"research"), depth("quick"|"deep"|null), content, status("streaming"|"complete"|"error"|"cancelled"), sources[{n,url,title,tier,score,connector}], usage{costUsd,promptTokens,completionTokens,model}|null, handoffs[{format,refId,at}], error, createdAt}`。**表示順は `createdAt` ではなく `seq`**(`repo/chat.py` の `append_message()` がトランザクションで `totals.messages` から採番): ユーザー発言とその応答が同一クロックティックに書かれ得るうえ、アシスタント側ドキュメントは本文確定前に先に作られるため。取得した本文(fetch した web ページのテキスト、コード上の呼称は「readings」)は**意図的に永続化しない**(design doc 11 §5.5)ため、メッセージ 1 件のサイズは 1MiB 上限から十分に余裕がある。`chatUsage/{YYYY-MM}` は `{costUsd, messages}` を `finish_message()` 完了ごとに `firestore.Increment` で加算し、月キーは UTC(admin の既存の月次コスト集計と合わせるため)。`chatThreads` のスレッド一覧は `status` の等価条件と `lastMessageAt` の並べ替えを組み合わせるため**複合インデックス #7 が必須**(§6 の実例を参照。当初「不要」と誤記して本番障害を出した)。`messages` の並べ替えは `seq` 単独なので自動の単一フィールドインデックスで足りる。
 
 ## 3. 各コレクション詳細
 
@@ -364,7 +364,7 @@ stateDiagram-v2
 
 ## 6. 複合インデックス
 
-Firestore では「複数フィールドを組み合わせた絞り込み+並べ替え」に複合インデックス(検索を高速化するための事前の並び順定義)が必要で、無いとクエリ自体がエラーになる。定義は `infra/firestore.indexes.json` に 6 件(デプロイ手順は `05-detailed-design/08-infra.md`)。各定義と、それを必要とするクエリの対応:
+Firestore では「複数フィールドを組み合わせた絞り込み+並べ替え」に複合インデックス(検索を高速化するための事前の並び順定義)が必要で、無いとクエリ自体がエラーになる。定義は `infra/firestore.indexes.json` に 7 件(デプロイ手順は `05-detailed-design/08-infra.md`)。各定義と、それを必要とするクエリの対応:
 
 | # | コレクション | フィールド構成 | 対応するクエリ | 用途 |
 |---|---|---|---|---|
@@ -374,8 +374,11 @@ Firestore では「複数フィールドを組み合わせた絞り込み+並べ
 | 4 | `posts` | `format` ASC, `createdAt` DESC | (現状クエリ無し) | フォーマット別絞り込みの将来用(旧 `cadence` 索引を移行時に置換。旧 `recent_by_cadence()` は削除済み) |
 | 5 | `sources` | `categoryId` ASC, `enabled` ASC | `pipeline/app/repo/configs.py` の `enabled_sources()` | collect のカテゴリ別有効ソース取得 |
 | 6 | `researchRuns` | `status` ASC, `createdAt` ASC | Research Agent のキュー取得(doc 10、後続フェーズ) | queued/running の run を古い順に lease |
+| 7 | `chatThreads` | `status` ASC, `lastMessageAt` DESC | `admin/src/lib/data.ts` の `getChatThreads()`(および `pipeline/app/repo/chat.py` の `list_threads()`) | チャットのスレッド一覧(`status=='active'` を最終発言の新しい順に 30 件) |
 
-このほかのクエリ(admin の `getRecentPosts()` / `getRecentRuns()` / `getMonthCostUsd()` など)は単一フィールドの絞り込み・並べ替えだけなので、Firestore が自動で持つ単一フィールドインデックスで足り、定義は不要。**逆に言うと、repo 層や `data.ts` に「等価条件+別フィールドの範囲/並べ替え」を組み合わせた新しいクエリを書いたら、この JSON への追記とデプロイが必須**である。
+このほかのクエリ(admin の `getRecentPosts()` / `getRecentRuns()` / `getMonthCostUsd()` / `getChatMessages()`、`repo/items.py` の `recent_all()` など)は単一フィールドの絞り込み・並べ替えだけなので、Firestore が自動で持つ単一フィールドインデックスで足り、定義は不要(`recent_all()` は `collectedAt` の範囲条件と並べ替えが**同一フィールド**なので複合にならない)。**逆に言うと、repo 層や `data.ts` に「等価条件+別フィールドの範囲/並べ替え」を組み合わせた新しいクエリを書いたら、この JSON への追記とデプロイが必須**である。
+
+> **実例(2026-07-15)**: #7 はこの規則を見落として本番で踏んだ。`getChatThreads()` は `where(status=='active')` + `orderBy(lastMessageAt desc)` = まさに「等価条件+別フィールドの並べ替え」だったが、計画書の「インデックス追加不要」を検証せずに実装したため、`/chat` を開くたびに `9 FAILED_PRECONDITION: The query requires an index`(admin 側は "Application error: a server-side exception has occurred")で 500 になった。**コレクションが空でも発生する**(データ量ではなくクエリ形状で決まる)ので、ローカルの単体テスト(Firestore をモックする)では絶対に検知できない。新しいクエリを足したら、まずこの表に照らすこと。
 
 ## 7. 変更するときは
 

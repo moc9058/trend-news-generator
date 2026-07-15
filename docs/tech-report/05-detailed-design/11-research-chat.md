@@ -117,7 +117,8 @@ mode=research : plan_queries → search → select → read ─┬─► synthes
 - **`chatThreads/{ct_YYYYMMDD_rand6}`**: `{title, requestedBy, status, cancelRequested, totals{messages,costUsd}, createdAt, updatedAt, lastMessageAt}`
 - **`chatThreads/{id}/messages/{auto}`**: `{seq, role, mode, depth, content, status, sources[], usage, handoffs[], error, createdAt}`
 - **`chatUsage/{YYYY-MM}`**: `{costUsd, messages}` — ダッシュボードのコストカードに当月分が加算される(`getCostSummary`)
-- 追加インデックス不要(単一フィールド order のみ)。**readings(本文抜粋)は永続しない**ため 1MiB 制限に余裕
+- **複合インデックス `chatThreads(status ASC, lastMessageAt DESC)` が必須**(`infra/firestore.indexes.json` #7 + `00-bootstrap.sh` の `create_index` の**両方**に定義。手動ミラー)。スレッド一覧が「等価条件+別フィールドの並べ替え」だから。§6.8 参照
+- **readings(本文抜粋)は永続しない**ため 1MiB 制限に余裕
 
 ## 5. 関数リファレンス
 
@@ -168,6 +169,20 @@ OpenAI は usage を**本文の後の最終チャンク**で送る。よって c
 ### 6.7 二重投稿の回避
 
 handoff は**下書き生成まで**。`/api/chat/handoff` は投稿を一切しない(short/article = `status=draft`、report = `queued` な ResearchRun)。公開は既存の承認→publish フローに限定されるため、「投稿系ジョブは retries=0」の安全方針に触れない。チャット発の短文は `shortRequireApproval` に関係なく常に draft(§1.2-2)。
+
+### 6.8 複合インデックス — テストが原理的に検知できない唯一の失敗
+
+**2026-07-15、本番で踏んだ**。スレッド一覧 `getChatThreads()` は `where(status=='active')` + `orderBy(lastMessageAt desc)`、つまり「等価条件 + **別フィールド**の並べ替え」で、Firestore ではこれに複合インデックスが要る。無いとクエリが `9 FAILED_PRECONDITION: The query requires an index` で失敗し、admin は "Application error: a server-side exception has occurred" の 500 になる。
+
+この失敗が厄介なのは 3 点:
+
+1. **コレクションが空でも起きる**。データ量ではなく**クエリの形**で決まるので、「まだ1件も無いから大丈夫」は成立しない
+2. **pytest では絶対に出ない**。テストは Firestore をモック(または最小のフェイク)にするため、インデックスの有無という概念が存在しない。`npm run build` にも出ない
+3. **ダッシュボードは正常に見える**。パネル(`ChatPanel`)はスレッド一覧を読まないので、壊れるのは `/chat` だけ。「チャットは動いているのに履歴ページだけ 500」という紛らわしい症状になる
+
+定義は `infra/firestore.indexes.json` と `infra/00-bootstrap.sh` の `create_index` の**両方**に書く(手動ミラー。`./deploy.sh` の bootstrap 段が作成する)。インデックスのビルドは非同期なので、作成直後は数分 `CREATING` のままで、その間はクエリが失敗し続ける。
+
+**教訓**: repo 層や `data.ts` に新しいクエリを足したら、[03-data-model.md](../03-data-model.md) §6 の表に照らしてから実装する。今回は計画書の「インデックス追加不要」を実地検証せずに信じたのが原因で、03-data-model.md には元から「等価条件+別フィールドの並べ替えを書いたら JSON への追記が必須」と明記されていた。
 
 ## 7. エラー時の挙動
 

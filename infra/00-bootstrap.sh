@@ -47,6 +47,12 @@ create_index sources \
 create_index researchRuns \
   --field-config=field-path=status,order=ascending \
   --field-config=field-path=createdAt,order=ascending
+# chat: getChatThreads() = where(status==active) + orderBy(lastMessageAt desc).
+# An equality filter plus an orderBy on a DIFFERENT field always needs a
+# composite index — without it /chat 500s on every load, empty collection or not.
+create_index chatThreads \
+  --field-config=field-path=status,order=ascending \
+  --field-config=field-path=lastMessageAt,order=descending
 
 echo "--- GCS bucket (private)"
 gcloud storage buckets create "gs://${BUCKET}" --location="$REGION" \
