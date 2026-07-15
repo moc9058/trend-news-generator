@@ -754,6 +754,10 @@ researchRuns/{runId}/checkpoint_writes/{doc}/checkpoint_chunks/{i}
 - **サードパーティ ABI への依存**: `FirestoreCheckpointSaver` は `BaseCheckpointSaver` を直接実装し、`JsonPlusSerializer` のシリアライズ形式に乗っている。このため `langgraph>=1.2,<2` / `langgraph-checkpoint>=4.1,<5` と**上限を固定**している(リポジトリの他の依存は `>=` のみ)。バンプ時は移行計画書の step-0 プローブを再実行すること。カナリアは `tests/research/test_checkpointer_firestore.py`
 - **`DeltaChannel` 禁止**: チェックポイントを1つの blob として保存する設計は、チャネルが部分更新を返さないことに依存する。`builder.py` の assert が破れを検知する
 
+### 8.2.1 M3(フェーズ跨ぎパイプライン)— 実装しない将来スケッチ
+
+M2 の並列化は**フェーズ内**に限定した(ユーザー確定事項)。さらに壁時計時間を削るなら、triage 済みヒットを `Topic` チャネルで extract へストリームし、gather の継続中に抽出を始める「フェーズ跨ぎ」がある(`defer=True` の join で coverage をバリア化する)。実装しない理由: (1) triage と coverage は「全結果を突き合わせる」品質ゲートであり、ストリーム化はその意味論の再設計を要求する (2) per-item の予算アドミッション(いま走っている抽出を途中で止めるか)が必要になる (3) admin のフェーズ進行表示(1フェーズ=1組の start/end)と根本的に相容れない。**壁時計時間が実運用で問題になった場合にのみ再検討**。現状の想定(月1本・40分ソフト上限)では M2 のフェーズ内並列で十分。
+
 ### 8.3 残る曖昧点と判断基準(実装前に確定 or 既定値で進行)
 
 | # | 論点 | 既定(本設計) | 判断基準 / 変更条件 |
