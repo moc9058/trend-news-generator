@@ -18,77 +18,11 @@ weakening of the trust model therefore fails the suite rather than passing revie
 
 import pytest
 
-import app.repo.posts as posts_repo
-import app.repo.research as rr_repo
 import app.research.llm as llm_mod
-import app.utils.gcs as gcs_mod
-from app.research.budget import Budget
-from app.research.context import RunContext
-from app.research.fetch.fetcher import FetchResult
-from app.research.harness import ResearchHarness
 from app.research.phases.gather import MAX_SELECTED
 from app.research.phases.plan import STRATEGY_MATRIX
 from app.research.schemas import BudgetState, ResearchRun, SourceHit
-
-
-class _Store:
-    def __init__(self):
-        self.runs, self.evidence, self.claims, self.posts = {}, {}, {}, {}
-        self.seq = 0
-
-
-class _FakeConn:
-    def __init__(self, name, hits):
-        self.name, self._hits, self.disabled = name, hits, False
-
-    def search(self, q):
-        return [h.model_copy(deep=True) for h in self._hits]
-
-
-class _FakeFetcher:
-    def fetch(self, url):
-        return FetchResult(
-            data=(f"Substantial source material about the topic, from {url}, "
-                  "with several sentences of analysis.").encode("utf-8"),
-            mimeType="text/plain", finalUrl=url)
-
-
-@pytest.fixture
-def store(monkeypatch):
-    """In-memory Firestore/GCS. `llm` is left for each test to install."""
-    s = _Store()
-    monkeypatch.setattr(rr_repo, "get", lambda rid: s.runs.get(rid))
-    monkeypatch.setattr(rr_repo, "save", lambda run: s.runs.__setitem__(run.id, run))
-    monkeypatch.setattr(rr_repo, "update_fields", lambda rid, fields: None)
-    monkeypatch.setattr(rr_repo, "heartbeat", lambda rid, now=None: None)
-
-    def _set_status(rid, status, **extra):
-        if rid in s.runs:
-            s.runs[rid].status = status
-    monkeypatch.setattr(rr_repo, "set_status", _set_status)
-
-    def _ev_create(rid, ev):
-        d = s.evidence.setdefault(rid, {})
-        if ev.evidenceId in d:
-            return False
-        d[ev.evidenceId] = ev
-        return True
-    monkeypatch.setattr(rr_repo, "evidence_create_if_absent", _ev_create)
-    monkeypatch.setattr(rr_repo, "get_evidence",
-                        lambda rid: list(s.evidence.get(rid, {}).values()))
-    monkeypatch.setattr(rr_repo, "upsert_claim",
-                        lambda rid, c: s.claims.setdefault(rid, {}).__setitem__(c.claimId, c))
-    monkeypatch.setattr(rr_repo, "get_claims", lambda rid: list(s.claims.get(rid, {}).values()))
-    monkeypatch.setattr(rr_repo, "append_event", lambda rid, ev: None)
-
-    def _post_create(post):
-        s.seq += 1
-        pid = f"post_{s.seq}"
-        s.posts[pid] = post
-        return pid
-    monkeypatch.setattr(posts_repo, "create", _post_create)
-    monkeypatch.setattr(gcs_mod, "upload_bytes", lambda path, data, mime: path)
-    return s
+from tests.research.conftest import FakeConn, drive
 
 
 def _install_llm(monkeypatch, store, *, planner, triage, verifier=None):
@@ -124,17 +58,16 @@ def _install_llm(monkeypatch, store, *, planner, triage, verifier=None):
 
 
 def _run(store, registry, run_id="rr_inv_01", theme="ある調査テーマ"):
+    """Drive one run through the graph. M1 moved this seam off ResearchHarness;
+    every assertion below stayed exactly as it was, which is the parity claim."""
     run = ResearchRun(
         id=run_id, trigger="manual", requestedBy="u@example.com",
         categoryId="geopolitics-history", theme=theme,
         budget=BudgetState(usdCap=10.0), languages=["ja"], canonicalLanguage="ja",
         status="running", phase="plan")
     store.runs[run.id] = run
-
-    def factory(r):
-        return RunContext(run=r, budget=Budget(r.budget), registry=registry,
-                          fetcher=_FakeFetcher())
-    return ResearchHarness(ctx_factory=factory).run(run.id), run
+    final, _ = drive(run, registry)
+    return final, run
 
 
 def _keep_all(tier):
@@ -163,7 +96,7 @@ def test_plan_fixes_invalid_strategies_to_matrix(store, monkeypatch):
         ]},
         triage=_keep_all("primary"))
 
-    _run(store, {"kokkai": _FakeConn("kokkai", [_kokkai_hit()])})
+    _run(store, {"kokkai": FakeConn("kokkai", [_kokkai_hit()])})
     plan = store.runs["rr_inv_01"].plan
     matrix = STRATEGY_MATRIX["politics_history"]
 
@@ -214,11 +147,10 @@ def test_triage_drops_tertiary_and_caps_selection(store, monkeypatch):
             for i in range(40)]})
 
     many = [_news_hit(i) for i in range(40)]
-    ctx, _ = _run(store, {"kokkai": _FakeConn("kokkai", many)})
+    final, _ = _run(store, {"kokkai": FakeConn("kokkai", many)})
 
-    assert ctx is not None
-    assert len(ctx.selected) <= MAX_SELECTED
-    assert all(h.tierHint != "tertiary" for h in ctx.selected)
+    assert len(final["selected"]) <= MAX_SELECTED
+    assert all(h.tierHint != "tertiary" for h in final["selected"])
     # and nothing tertiary reached the evidence store
     assert all(e.tier != "tertiary" for e in store.evidence.get("rr_inv_01", {}).values())
 
@@ -239,12 +171,11 @@ def test_coverage_requires_tiered_evidence_loops_on_tertiary_only(store, monkeyp
             {"index": 0, "keep": True, "tier": "secondary", "relevance": 0.9}]})
 
     # exactly one source -> one evidence record -> below MIN_EVIDENCE_PER_RQ
-    ctx, run = _run(store, {"news": _FakeConn("news", [_news_hit(0)])})
+    final, run = _run(store, {"news": FakeConn("news", [_news_hit(0)])})
 
-    assert ctx is not None
     assert len(store.evidence["rr_inv_01"]) == 1
-    assert ctx.coverage is not None
-    rq_cov = {c.rqId: c for c in ctx.coverage.rqCoverage}
+    assert final["coverage"] is not None
+    rq_cov = {c.rqId: c for c in final["coverage"].rqCoverage}
     assert rq_cov["rq1"].resolved is False
     # the loop ceiling is what eventually stops it, not a lowered evidence bar
     assert run.loops >= 1
@@ -270,10 +201,9 @@ def test_weak_claims_render_demoted(store, monkeypatch):
              "evidenceIds": ev_ids[:1], "verdict": "corroborated",
              "stance": "", "isInterpretation": False, "confidence": 0.99}]})
 
-    ctx, _ = _run(store, {"news": _FakeConn("news", [_blog_hit()])})
+    final, _ = _run(store, {"news": FakeConn("news", [_blog_hit()])})
 
-    assert ctx is not None
-    weak = [c for c in ctx.claims if c.claimId == "cl_weak"]
+    weak = [c for c in final["claims"] if c.claimId == "cl_weak"]
     assert weak, "the verifier's claim should have been recorded"
     assert weak[0].renderAs != "assertion"
     assert weak[0].renderAs == "opinion_report"

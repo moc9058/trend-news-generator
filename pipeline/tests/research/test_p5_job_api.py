@@ -9,9 +9,9 @@ import app.main as main
 import app.repo.research as rr_repo
 import app.research.select as select_mod
 import app.research.sources.deep_research as dr_mod
+from app.research.graph import runner
 from app.research.budget import Budget
 from app.research.context import RunContext
-from app.research.harness import ResearchHarness
 from app.research.schemas import BudgetState, ResearchRun, StrategyQuery
 from app.research.sources.deep_research import DeepResearchConnector, parse_citations
 
@@ -102,23 +102,30 @@ def test_generate_report_drains_queue(monkeypatch):
     queue = [ResearchRun(id="r1"), ResearchRun(id="r2")]
     monkeypatch.setattr(gr.repo, "claim_next", lambda worker: queue.pop(0) if queue else None)
     ran = []
-    monkeypatch.setattr(gr.ResearchHarness, "run", lambda self, rid: ran.append(rid))
+    monkeypatch.setattr(gr.runner, "run_research", lambda run: ran.append(run.id))
     gr.main()
     assert ran == ["r1", "r2"]
 
 
-# ---------- harness honours cancel (resume-adjacent) ----------
+# ---------- the runner honours cancel (resume-adjacent) ----------
 
-def test_harness_honours_cancel(monkeypatch):
+def test_runner_honours_cancel(monkeypatch):
+    # claim_next will hand out a queued run that was cancelled from admin, so the
+    # runner checks before it starts: a cancel must not cost a plan.
     run = ResearchRun(id="rrc", status="running", phase="R0",
                       cancelRequested=True, budget=BudgetState(usdCap=10))
     store = {"rrc": run}
     monkeypatch.setattr(rr_repo, "get", lambda rid: store.get(rid))
-    monkeypatch.setattr(rr_repo, "set_status",
-                        lambda rid, status, **k: setattr(store[rid], "status", status))
+    monkeypatch.setattr(rr_repo, "update_fields",
+                        lambda rid, f: [setattr(store[rid], k, v) for k, v in f.items()
+                                        if hasattr(store[rid], k)])
     monkeypatch.setattr(rr_repo, "append_event", lambda rid, ev: None)
-    harness = ResearchHarness(ctx_factory=lambda r: RunContext(run=r, budget=Budget(r.budget)))
-    harness.run("rrc")
+
+    def _never(*a, **k):
+        raise AssertionError("a cancelled run must not reach the graph")
+    monkeypatch.setattr(runner, "default_graph", _never)
+
+    runner.run_research(run)
     assert store["rrc"].status == "cancelled"
 
 

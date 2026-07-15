@@ -1,6 +1,6 @@
 # 03. データモデル — Firestore コレクション仕様
 
-> 対象コード時点: コミット 2c640f3 + 未コミット変更 / 最終更新: 2026-07-15(Research Chat の `chatThreads` / `chatThreads/{id}/messages` / `chatUsage` コレクションと、`posts` / `researchRuns` への chat 連携フィールド追加を反映)
+> 対象コード時点: コミット c6427a7 + 未コミット変更 / 最終更新: 2026-07-15(**M1: `researchRuns` 配下に LangGraph の checkpoint 系4サブコレクションを追加**(doc 10 §6.7)/ Research Chat の `chatThreads` / `chatThreads/{id}/messages` / `chatUsage` コレクションと、`posts` / `researchRuns` への chat 連携フィールド追加を反映)
 
 ## 1. この文書で分かること
 
@@ -24,10 +24,14 @@
 | `settings`(doc `app`) | 固定名 `app` | seed・admin | 生成・公開処理・admin | 全体設定(短文の承認要否・画像添付など) |
 | `settings`(doc `notion`) | 固定名 `notion` | seed・admin | Notion publisher・admin | 投稿先 Notion データベースの ID |
 | `settings`(doc `channelHealth`) | 固定名 `channelHealth` | Threads トークン更新ジョブ | admin | Threads トークンの期限・エラー表示用 |
-| `researchRuns` | `rr_{YYYYMMDD}_{ランダム6}` | research API・Research Harness | admin・Harness | レポート調査の状態・計画・予算・lease(§4.7 / doc 10) |
-| `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | Harness extract | Harness・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
-| `researchRuns/{id}/claims` | `{claimId}` | Harness verify | Harness・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
-| `researchRuns/{id}/events` | 自動採番 | Harness 全フェーズ | admin | 追記専用の監査ログ(doc 10 §6.5) |
+| `researchRuns` | `rr_{YYYYMMDD}_{ランダム6}` | research API・graph runner | admin・runner | レポート調査の状態・計画・予算・lease(§4.7 / doc 10) |
+| `researchRuns/{id}/evidence` | `sha256(canonicalUrl)[:32]` | extract ノード | runner・admin | 証拠メタ+スナップショット参照(EvidenceRecord。doc 10 §4.5) |
+| `researchRuns/{id}/claims` | `{claimId}` | verify ノード | runner・admin | 検証済み論点(裏取り/立場/信頼度。doc 10 §4.7) |
+| `researchRuns/{id}/events` | 自動採番 | 全ノード | admin | 追記専用の監査ログ(doc 10 §6.5) |
+| `researchRuns/{id}/checkpoints` | `{checkpointId}`(uuid6) | LangGraph runner | runner のみ | **グラフのチェックポイント本体(meta)**。superstep ごとに1件。TTL 14日(doc 10 §6.7) |
+| `researchRuns/{id}/checkpoints/{cid}/checkpoint_chunks` | `{i}`(0 始まりの連番) | 同上 | 同上 | 直列化した state を 900KB ずつに割った塊。Firestore の1ドキュメント上限(約1MiB)を超える state(kokkai の発言全文など)のため |
+| `researchRuns/{id}/checkpoint_writes` | `{cid}__{taskId}__{idx}` | 同上 | 同上 | superstep 途中の書き込み(Pregel の pending_writes) |
+| `researchRuns/{id}/checkpoint_writes/{doc}/checkpoint_chunks` | `{i}` | 同上 | 同上 | 同じチャンク方式 |
 | `chatThreads` | `ct_{YYYYMMDD}_{ランダム6}` | chat API(グラフ) | admin・chat API | Research Chat の会話 1 本(タイトル・状態・累計コスト) |
 | `chatThreads/{id}/messages` | 自動採番 | chat API(グラフ) | admin・chat API | 会話内の 1 メッセージ(ユーザー発言 or アシスタント応答) |
 | `chatUsage` | 固定書式 `YYYY-MM`(UTC) | chat API(`repo/chat.py` の `add_usage()`) | admin(`getCostSummary()`) | チャットの月次コスト集計(ダッシュボードのコストカード用) |

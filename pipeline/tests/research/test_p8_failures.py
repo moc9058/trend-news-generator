@@ -2,7 +2,7 @@
 
 Covers the catalog patterns not already exercised elsewhere:
   * LLM JSON崩れ → pydantic validation → one corrective retry → skip/raise
-  * 予算枯渇 → harness stops as budget_exhausted (graceful)
+  * 予算枯渇 → the graph stops as budget_exhausted (graceful)
 (hallucinated-citation, dead-link→Wayback, SSRF, robots, circuit-breaker,
 academic fallback chain are covered in the connector / fetcher / golden tests.)
 """
@@ -12,8 +12,6 @@ import pytest
 import app.repo.research as rr_repo
 import app.research.llm as llm_mod
 from app.research.budget import Budget
-from app.research.context import RunContext
-from app.research.harness import ResearchHarness
 from app.research.llm import ResearchLLMError, structured
 from app.research.schemas import BudgetState, ResearchPlan, ResearchRun
 
@@ -60,16 +58,27 @@ def test_llm_structured_raises_after_two_failures(monkeypatch):
                    budget=_budget(), run_id="r", phase="plan", actor="planner")
 
 
-def test_harness_stops_as_budget_exhausted(monkeypatch):
-    # remaining budget 0 → cannot afford gather (floor $0.70) → graceful stop.
-    run = ResearchRun(id="rrb", status="running", phase="gather",
-                      budget=BudgetState(usdCap=1.0, usdSpent=1.0))
-    store = {"rrb": run}
-    monkeypatch.setattr(rr_repo, "get", lambda rid: store.get(rid))
-    monkeypatch.setattr(rr_repo, "set_status",
-                        lambda rid, s, **k: setattr(store[rid], "status", s))
-    monkeypatch.setattr(rr_repo, "append_event", lambda rid, ev: None)
+def test_graph_stops_as_budget_exhausted(store, monkeypatch):
+    """Remaining budget 0 → cannot afford gather (floor $0.70) → graceful stop.
 
-    harness = ResearchHarness(ctx_factory=lambda r: RunContext(run=r, budget=Budget(r.budget)))
-    harness.run("rrb")
-    assert store["rrb"].status == "budget_exhausted"
+    The plan phase has no floor, so it still runs; gather's guard then routes to
+    budget_stop BEFORE emitting any phase event, leaving gather `pending` in the
+    admin flow exactly as the harness did.
+    """
+    from tests.research.conftest import drive, install_fake_llm
+
+    install_fake_llm(monkeypatch, store)
+    run = ResearchRun(id="rrb", status="running", phase="plan", theme="t",
+                      languages=["ja"], canonicalLanguage="ja",
+                      budget=BudgetState(usdCap=1.0, usdSpent=1.0))
+    store.runs[run.id] = run
+
+    final, _ = drive(run)
+
+    assert store.runs["rrb"].status == "budget_exhausted"
+    assert final["stop_reason"] == "budget_exhausted"
+    assert not store.runs["rrb"].postId  # no draft was fabricated
+    # the skipped phase recorded its refusal, and no phase_start for it
+    actions = [(ev.phase, ev.action) for _, ev in store.events]
+    assert ("gather", "budget_check") in actions
+    assert ("gather", "phase_start") not in actions

@@ -1,6 +1,6 @@
 # 04. パラメーターシート — 設定値の一覧
 
-> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith / Research Chat: `chat_*` 設定)/ 最終更新: 2026-07-15
+> 対象コード時点: コミット c6427a7 + 未コミット変更(M1: LangGraph 移行の 2 設定 / M0-a: LangSmith / Research Chat: `chat_*` 設定)/ 最終更新: 2026-07-15
 
 この文書は trend-news-generator が「いま、どういう設定値で動いているか」の一覧の**正**(基準表)である。値の意味・定義場所・変更時に触る場所だけを扱い、作業手順そのものは扱わない。
 
@@ -90,6 +90,8 @@ flowchart TB
 | `research_max_loops`(`RESEARCH_MAX_LOOPS`) | `2` | なし | verify→gather ループバックの上限 |
 | `research_max_fetches`(`RESEARCH_MAX_FETCHES`) | `80` | なし | 1 run あたりの取得(fetch)上限 |
 | `research_wall_clock_min`(`RESEARCH_WALL_CLOCK_MIN`) | `40` | なし | 1 run のソフト実時間上限(分。task-timeout 内) |
+| `research_checkpoint_ttl_days`(`RESEARCH_CHECKPOINT_TTL_DAYS`) | `14` | なし | LangGraph チェックポイントの保持日数。`graph/checkpointer.py` が全ドキュメントに `expiresAt` を刻み、Firestore の TTL ポリシー(`00-bootstrap.sh`)が回収する。成功 run は自分で消すので、これが効くのは失敗・cancel・承認待ち放置の run |
+| `research_max_concurrency`(`RESEARCH_MAX_CONCURRENCY`) | `1` | なし | `graph.stream(config={"max_concurrency": ...})`。M1 は直列。M2 のフェーズ内 fan-out で 4 に上げる |
 | `semantic_scholar_api_key`(`SEMANTIC_SCHOLAR_API_KEY`) | 空 | Secret Manager(任意) | academic コネクタ用。無くてもフォールバックで動く |
 | `chat_model`(`CHAT_MODEL`) | `gpt-5.6-sol` | なし | Research Chat の壁打ち(sparring)応答生成、および調査モード深掘り(deep)の統合(synthesize)を担う最上位判断モデル。doc 11 |
 | `chat_research_model`(`CHAT_RESEARCH_MODEL`) | `gpt-5.6-terra` | なし | Research Chat 調査モードのクイック(quick)統合(synthesize)モデル |
@@ -276,6 +278,21 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | `MAX_SELECTED` | 25件 | `generators/longform.py` | 第2段階(執筆)に渡す採用アイテムの上限 |
 | 最少候補数 | 3件 | `generators/longform.py` | これ未満のカテゴリはその回をスキップ |
 | 1アイテム本文の上限 | 4,000文字 | `generators/longform.py`(`format_items_for_prompt` の引数) | 第2段階プロンプトに入れる本文の切り詰め |
+
+### 8.2.1 レポート調査(research)
+
+| 定数 | 値 | 定義場所 | 意味 |
+|---|---|---|---|
+| `MAX_SELECTED` | 20件 | `research/phases/gather.py` | triage が選ぶソースの上限(超過分は切り捨て) |
+| `MAX_REFINED_QUERIES` | 2件 | `research/phases/gather.py` | RQ×コネクタあたりの精緻化クエリ数 |
+| `MIN_EVIDENCE_PER_RQ` | 2件 | `research/phases/verify.py` | RQ が resolved になる最低証拠数(かつ primary/secondary ≥1) |
+| `PHASE_MIN_USD` | gather .70 / extract .50 / verify .60 / write 1.00 / review .30 | `research/budget.py` | そのフェーズに**入る**のに必要な残予算(下回ると graceful stop) |
+| `DEEP_RESEARCH_MIN_USD` | 3.0 | `research/budget.py` | DR が自動スキップになる残予算のしきい値 |
+| `DEEP_RESEARCH_FALLBACK_USD` | 2.0 | `research/sources/deep_research.py` | DR のレスポンスから usage が取れない時に積む見積り |
+| `WEB_SEARCH_CALL_USD` | 0.010 | `generators/openai_client.py` | 組込み web_search ツールの1回あたり単価($10/1,000回)。DR の課金の大半 |
+| `CHUNK_BYTES` | 900,000 | `research/graph/checkpointer.py` | チェックポイント blob の1チャンク上限。Firestore の1ドキュメント上限(約1MiB)の内側に収めるための値 |
+| `RECURSION_LIMIT` | 50 | `research/graph/runner.py` | `graph.stream` の superstep 上限。既定の 25 では「gather ループ2回+revise 1回」の最悪ケースに足りない |
+| `LEASE_TTL_MIN` | 30分 | `research/state.py` | heartbeat がこれを超えた `running` は stale = 再取得可 |
 
 ### 8.3 文字数制限と整形
 

@@ -3,7 +3,7 @@
 
 This is the repo's first use of a Firestore transaction. `claim_next()` atomically
 takes ownership of a `queued` run — or a `running` run whose lease has gone stale —
-so a crashed job can be resumed from its last completed phase without two workers
+so a crashed job can be resumed from its last checkpoint without two workers
 ever advancing the same run (double-execution guard). The lease predicate
 `_claimable()` is pure and unit-tested; the transaction is a thin CAS around it.
 """
@@ -79,8 +79,8 @@ def heartbeat(run_id: str, now: Optional[datetime] = None) -> None:
 
 
 def request_cancel(run_id: str) -> bool:
-    """Flag a run for cancellation; the harness honours it at the next phase
-    boundary. Returns False if the run is already terminal (API returns 409)."""
+    """Flag a run for cancellation; the graph runner honours it before it starts
+    and between supersteps. Returns False if the run is already terminal (409)."""
     run = get(run_id)
     if run is None or is_terminal(run.status):
         return False

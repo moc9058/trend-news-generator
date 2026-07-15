@@ -1,6 +1,6 @@
 # テストと文書検証 詳細設計
 
-> 対象コード時点: コミット 2b03190 + 未コミット変更 / 最終更新: 2026-07-15(M0-a: conftest.py・test_observability.py / M0-b: test_prompts.py・test_trusted_source_invariants.py / M0-c: test_deep_research_enablement.py / Research Chat: `pipeline/tests/chat/` 9ファイル・84件)
+> 対象コード時点: コミット c6427a7 + 未コミット変更 / 最終更新: 2026-07-15(**M1: test_graph_golden.py / test_checkpointer_firestore.py / test_runner.py / tests/research/conftest.py** / M0-c: test_deep_research_enablement.py / M0-b: test_prompts.py・test_trusted_source_invariants.py / M0-a: conftest.py・test_observability.py / Research Chat: `tests/chat/` 9ファイル84件)
 
 この文書は2部構成です。第1部は pipeline の自動テスト(コードが正しく動くことを機械的に確かめる仕組み)の読み方と動かし方、第2部は本 tech-report 文書群を更新したときに「文書とコードが一致しているか」を確かめる恒久手順です。
 パイプライン共通の前提知識は [01-pipeline-foundation.md](01-pipeline-foundation.md) を、コードの読み進め方は [00-code-reading-primer.md](00-code-reading-primer.md) を先に参照してください。
@@ -9,7 +9,7 @@
 
 ### 1. この文書で分かること
 
-- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 12ファイル + `tests/chat/` 9ファイル、計270件・2026-07-15時点)をどう実行し、結果をどう読むか
+- pipeline のテスト(`pipeline/tests/` 直下11ファイル + `tests/research/` 15ファイル + `tests/chat/` 9ファイル、計317件・2026-07-15時点)をどう実行し、結果をどう読むか
 - 各テストファイルが「何を固定しているか」と、どの機能文書に対応するか
 - テストが無い領域はどこで、実運用では何がそれを補っているか
 
@@ -45,10 +45,10 @@ uv run pytest -v -k "notion"
 **出力の読み方**: 成功したテストは `.`(ドット)1個で表示され、最後に要約が出ます。2026-07-15 時点のコードでは全件成功し、次のようになります(所要 6〜7 秒)。
 
 ```text
-270 passed, 2 warnings in 6.77s
+317 passed, 2 warnings in 9.36s
 ```
 
-- `270 passed` — 270件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
+- `317 passed` — 317件すべて成功。これが正常です(件数は今後増減し得ます。5章末尾の表が最新の内訳)
 - `F` と `FAILED tests/test_xxx.py::test_yyy` — そのテストの期待値と実際の値が食い違った。直前に「期待値 / 実際の値」の比較が表示されます
 - `E` / `ERROR` / `Interrupted: N error during collection` — テスト実行以前の問題(import の失敗など)。コード自体が壊れている合図で、失敗より深刻です
 - `warning` は利用ライブラリ内部の非推奨警告などで、`passed` であれば気にする必要はありません
@@ -246,9 +246,44 @@ uv run pytest -v -k "notion"
 | `test_system_prompts_have_no_unresolved_placeholders()` | `*_SYSTEM` は無加工で送られるため `{placeholder}` が残っていない(`LOCALIZE_SYSTEM` のみ例外) |
 | `test_prompt_version_reflects_prompt_changes()` | プロンプトを変えれば `PROMPT_VERSION` が変わる(定義時補間の担保。§6.5 の罠) |
 
+#### test_graph_golden.py(14件)— グラフ通貫 【最重要級】
+
+対象: **パイプライン全体**(`app/research/graph/` の実グラフを、LLM/コネクタ/Fetcher/GCS/Firestore だけ偽物にして通貫実行)。**M1 で `test_harness_golden.py` から移植した際、既存のアサーションを1つも変えていない** — 変えずに通ることが「LangGraph 移行で挙動が変わっていない」ことの証明そのものです([10-research-agent.md](10-research-agent.md) §8.2)。共通の偽物は `tests/research/conftest.py` の `drive()` にまとめてあり、本番と同じノード・同じ経路・同じチェックポインタ契約を通ります。
+
+| テスト関数 | 固定している振る舞い |
+|---|---|
+| `test_golden_full_run_produces_trilingual_report_post()` | DoD 一式: 3言語の下書き Post / citecheck 100% / 争点2立場 / arXiv:1706.03762 が primary で証拠入り |
+| `test_golden_run_restarts_legacy_run_without_checkpoint()` | 旧 `phase="R0"` の run が `LEGACY_PHASE_MAP` で読み替えられ、チェックポイントが無いので先頭から完走 |
+| `test_verify_loops_back_to_gather_until_loop_ceiling()` | 未解決 RQ で gather へループ、上限2回で finalize。未充足は隠さず残す |
+| `test_review_revise_loops_back_to_write_once()` | critic 不合格 → write へ1回だけ戻る(writer×2 / critic×2) |
+| `test_gather_falls_back_to_raw_rq_when_refinement_fails()` | クエリ精緻化 LLM が落ちても RQ 原文で検索を続行 |
+| `test_golden_citecheck_flags_hallucinated_citation()` | 存在しない evidenceId の引用を citecheck が検出 |
+| `test_event_sequence_matches_admin_contract()` | **管理画面のフロー図が読む契約**: フェーズ通過ごとに phase_start/phase_end が厳密に1組で交互に並ぶ / connector_search は gather 配下で `detail.hits` を持つ / actor が既知の語彙に収まる |
+| `test_revise_adds_exactly_one_write_phase_start()` | 管理画面が revise 辺を導く式(write の phase_start 数 − 1 = revisions)が成り立つ |
+| `test_plan_approval_interrupt_pause_and_resume()` | 承認ゲートが `interrupt()` で中断 → 承認 → 再開で完走。**planner の呼び出しは通算1回**(旧 Harness は再開時に計画を買い直していた) |
+| `test_awaiting_approval_run_retriggered_without_approval_stays_paused()` | 未承認のままジョブを再実行してもゲートを抜けられない |
+| **`test_crash_after_write_resumes_review_with_draft()`** | **空 Post バグの回帰テスト**(§8.2)。review でクラッシュ→再開しても draft が生きており、Post は1つだけ・本文は非空 |
+| `test_cancel_between_supersteps()` | superstep 境界で cancel を拾って停止し、Post を作らない |
+| `test_golden_run_through_the_firestore_checkpointer()` | 偽 Firestore 上の**実チェックポインタ**で通貫し、成功後にスレッドが消えている |
+| `test_crash_resume_through_the_firestore_checkpointer()` | 同上でクラッシュ→チェックポイントが残る→再開して完走 |
+
+#### test_checkpointer_firestore.py(20件)— 自前チェックポインタ
+
+対象: `app/research/graph/checkpointer.py`。**サードパーティの ABI(`BaseCheckpointSaver`)を自前実装している**ため、`langgraph-checkpoint` のバージョンを上げたとき最初に壊れるのはここです=カナリア。インメモリの偽 Firestore(本ファイル内の `FakeFirestore`。サブコレクション・`where`/`order_by`/`limit`/`stream` を実装)で完結します。
+
+主な内容: put/get_tuple の round-trip / **pydantic 値がモデルのまま復元されること** / **3MB 級 state のチャンク分割と byte 一致復元**(Firestore の1ドキュメント上限は約1MiB、kokkai は発言全文を持つ) / チャンク欠損は黙って切り詰めず例外 / 同一 checkpoint_id の put が冪等 / `list` の降順・`before`・`limit`・metadata フィルタ / parent_config の連鎖 / `put_writes` の round-trip と `WRITES_IDX_MAP` による特殊チャネルの上書き / `delete_thread` の全削除と他 run 不干渉 / 全ドキュメントへの `expiresAt` 刻印 / async メソッドが `NotImplementedError` のままであること。
+
+特筆: `test_every_schema_model_survives_the_serde_allowlist()` は**静かな失敗**を捕まえるためのものです。`JsonPlusSerializer` の allowlist から漏れた型は**例外ではなく `dict` として復元される**ため、漏れは「再開したグラフが `ReportDraft` の代わりに dict を掴む」という遠く離れた場所の `AttributeError` になって現れます。`schemas.py` の全モデルを round-trip して型が生き残ることを確認します。
+
+#### test_runner.py(19件)— 実行制御
+
+対象: `app/research/graph/runner.py`(グラフはスタブ)。グラフの外側の判断だけを切り出して検証します。
+
+主な内容: 入力決定マトリクス(新規=初期 state / interrupt 待ち+承認済み=`Command(resume=True)` / 未承認=グラフを回さず再 pause / クラッシュ=`None` で続行 / チェックポイント無しの旧 run=先頭から)/ 予算の max マージ / superstep の run ドキュメントへの投影(`plan_gate`・`budget_stop` は投影しない)/ 開始前 cancel はグラフに触れない / `awaiting_review` を確認できたときだけ `delete_thread`、後始末の失敗は握り潰す / `durability="sync"` と LangSmith 用 metadata の指定。
+
 #### test_trusted_source_invariants.py(5件)— 信頼できる情報源の不変条件 【最重要級】
 
-対象: **パイプライン全体**(`ResearchHarness` を偽 LLM/コネクタで通貫実行)。「政府・議会記録・査読論文・一次資料を優先する」という本システムの核心が、プロンプトではなく**決定的コード**で守られていることを成果物レベルで証明します([10-research-agent.md](10-research-agent.md) §4.2)。
+対象: **パイプライン全体**(`tests/research/conftest.py` の `drive()` で実グラフを偽 LLM/コネクタごと通貫実行)。**M1 で実行の縫い目を `ResearchHarness` から `runner.run_research` へ差し替えたが、アサーションは1つも変えていない。**「政府・議会記録・査読論文・一次資料を優先する」という本システムの核心が、プロンプトではなく**決定的コード**で守られていることを成果物レベルで証明します([10-research-agent.md](10-research-agent.md) §4.2)。
 
 | テスト関数 | 固定している振る舞い |
 |---|---|
@@ -403,7 +438,7 @@ for k, v in d.items(): print(f'{k}: {v}')"
 cd pipeline && pytest
 ```
 
-基準は `270 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 12ファイル111件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)** / **Deep Research の配線と課金(`test_deep_research_enablement.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
+基準は `317 passed`(2026-07-15 時点。内訳: `pipeline/tests/` 直下11ファイル75件 + `tests/research/*` 15ファイル158件(Research Agent — スキーマ round-trip / lease / budget / rubric / コネクタ(respx)/ fetcher ガード / golden plan→review 通貫 / API / 失敗パターン §7.3 / LangSmith 配線 / **プロンプト言語・注入防御ガード(`test_prompts.py`)** / **信頼源の不変条件(`test_trusted_source_invariants.py`)** / **Deep Research の配線と課金(`test_deep_research_enablement.py`)** / **LangGraph 移行(`test_graph_golden.py`(旧 test_harness_golden.py)・`test_checkpointer_firestore.py`・`test_runner.py`)**)+ `tests/chat/*` 9ファイル84件(Research Chat — 4章末尾参照))。失敗や collection error が出た状態で文書だけ直しても意味がないので、先にコードを直します。**件数が前回より減っていたら**、誰かがテストを消した合図なので経緯を確認してください。
 
 **手順6a — Mermaid 図の構文確認**: 文書中の図(` ```mermaid ` ブロック)は構文エラーがあると描画されません。まず一覧を出します。
 

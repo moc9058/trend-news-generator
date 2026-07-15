@@ -17,6 +17,7 @@ trafilatura>=1.8
 pypdf>=4.0
 langsmith<1,>=0.10
 langgraph<2,>=1.2
+langgraph-checkpoint<5,>=4.1
 
 [dev]
 pytest>=8.2

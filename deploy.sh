@@ -160,6 +160,42 @@ PY
   return 0
 }
 
+# Warn-only, like check_model_config: NEVER abort a deploy over this.
+# A research run in flight is checkpointed per superstep, so a deploy that swaps
+# the image under it is safe — the next job execution re-claims the run (stale
+# lease) and resumes from its last checkpoint. It is worth SAYING, though: if the
+# graph's topology or the state schema changed in this deploy, an in-flight run
+# resumes on the new code and can fail at the seam. Nothing is lost when it does
+# (evidence/claims are durable, the run just goes `failed`), but knowing that up
+# front beats discovering it in the admin an hour later.
+check_inflight_research() {
+  echo "=== in-flight research runs (warn-only) ==="
+  local py; py="$(pick_python)"
+  if ( cd ../pipeline && "$py" -c "import google.cloud.firestore, app.config" ) 2>/dev/null; then
+    ( cd ../pipeline && "$py" - <<'PY'
+from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
+
+NON_TERMINAL = ["queued", "running", "awaiting_plan_approval"]
+runs = list(firestore.Client().collection("researchRuns")
+            .where(filter=FieldFilter("status", "in", NON_TERMINAL)).stream())
+for d in runs:
+    r = d.to_dict() or {}
+    print(f"  !! {d.id}: status={r.get('status')} phase={r.get('phase')} "
+          f"spent=${(r.get('budget') or {}).get('usdSpent', 0):.2f}")
+if runs:
+    print("  ^ these resume from their checkpoint on the next job run. If this deploy")
+    print("    changed the graph topology or state schema, expect them to fail and re-run.")
+else:
+    print("  none in flight")
+PY
+    ) || echo "  (in-flight check errored — verify researchRuns by hand)"
+  else
+    echo "  (in-flight check skipped — needs pipeline env + ADC)"
+  fi
+  return 0
+}
+
 # ---- migration rollout -------------------------------------------------------
 
 if [[ "$migrate" == 1 ]]; then
@@ -271,5 +307,6 @@ else
 fi
 
 check_model_config
+check_inflight_research
 
 echo "deploy complete."

@@ -48,10 +48,12 @@
 実体は `researchRuns/{id}`（status / phase / budget と、サブコレクション evidence/claims/events）。admin の **Research → 実行詳細**でタイムライン・証拠・claims・コストを確認できる。
 
 - **`budget_exhausted` で停止**: 予算上限に達し次フェーズに入れず graceful 停止。部分成果（計画・証拠一覧）は閲覧可能。続きは**新しい run**（予算を上げて）で。同一 run の継続は行わない設計（doc 10 §7.2）
-- **`failed`**: `events` の `ok:false` 行と `error` を確認。多くはコネクタ断か LLM スキーマ不正。**resume**: run は lease 方式なので、`gcloud run jobs execute job-generate-report --region asia-northeast1` で再実行すると `claim_next` が最後の完了フェーズから再開する（全フェーズ冪等）
-- **`running` のまま固まる**: heartbeat が30分超で stale とみなされ、次の job 実行が自動で奪取・再開する。手動なら上記の execute を叩く
+- **`failed`**: `events` の `ok:false` 行と `error` を確認。多くはコネクタ断か LLM スキーマ不正。**resume**: `gcloud run jobs execute job-generate-report --region asia-northeast1` で再実行すると `claim_next` が同じ run を取り直し、**チェックポイントの続き（失敗した superstep）から再開**する。完了済みフェーズは再実行されない＝そのぶんの費用は再請求されない（2026-07-15 の LangGraph 移行前は「最後に完了したフェーズを丸ごと再実行」だった）
+- **チェックポイントの実体**: `researchRuns/{id}/checkpoints`（+ `checkpoint_chunks` / `checkpoint_writes`）。**成功した run は自分で消す**ので、ここに残っているのは失敗・cancel・承認待ちのまま放置された run だけ。放置分は `expiresAt` の TTL（14日、`config.research_checkpoint_ttl_days`）が自動回収するので手で消す必要はない。「チェックポイントが無い run を再実行した」場合は先頭からやり直す（evidence/claim は ID 冪等、postId があれば handoff はスキップなので安全。ログに `resuming a run with no checkpoint` が出る）
+- **デプロイとの関係**: 実行中の run がいても `./deploy.sh` して構わない（stale lease → 次の実行が拾って再開）。ただし**グラフの形や state スキーマを変えたデプロイ**では、進行中の run が新コードで再開して失敗し得る（証拠・claim は残るので新しい run で拾える）。deploy.sh 末尾の warn-only `check_inflight_research` が進行中の run を一覧表示する
+- **`running` のまま固まる**: heartbeat が30分超で stale とみなされ、次の job 実行が自動で奪取・再開する（この lease の仕組みは移行後も不変）。手動なら上記の execute を叩く
 - **コネクタが 429 嵐 / 連続失敗**: 5連続失敗で当該コネクタは run 内で自動無効化（サーキットブレーカ）され、カバレッジに未充足として残る。恒常的なら該当コネクタのキー/クォータを確認
-- **cancel**: admin の「実行をキャンセル」→ `cancelRequested=true`。Harness が次のフェーズ境界で `cancelled` にして停止
+- **cancel**: admin の「実行をキャンセル」→ `cancelRequested=true`。runner が**開始前と各 superstep の境界**で拾って `cancelled` にする（queued のまま cancel した run は plan の費用すら発生しない）
 
 ### リサーチチャットの失敗対応
 実体は `chatThreads/{id}` と サブコレクション `messages/{id}`（status / sources / usage）。設計は doc 11。**チャットは投稿を一切行わない**（handoff も下書き止まり）ので、障害の影響は「答えが出ない」までで、公開事故には繋がらない。

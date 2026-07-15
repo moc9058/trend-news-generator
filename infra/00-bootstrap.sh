@@ -83,4 +83,19 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud storage buckets add-iam-policy-binding "gs://${BUCKET}" \
   --member="serviceAccount:${ADMIN_SA}" --role=roles/storage.objectViewer -q >/dev/null
 
+# --- Firestore TTL: LangGraph checkpoints -------------------------------------
+# The research graph checkpoints every superstep under researchRuns/{id}. A run
+# that succeeds deletes its own thread, but one that fails, is cancelled or is
+# abandoned mid-approval leaves its checkpoints behind — these policies are what
+# stop those accumulating for ever. Firestore deletes any document whose
+# `expiresAt` has passed (the saver stamps every doc it writes;
+# config.research_checkpoint_ttl_days, default 14).
+# Collection-group scoped, so it covers the subcollection under every run.
+echo "--- Firestore TTL policies (research checkpoints)"
+for cg in checkpoints checkpoint_writes checkpoint_chunks; do
+  gcloud firestore fields ttls update expiresAt \
+    --collection-group="$cg" --enable-ttl --async -q 2>/dev/null \
+    || echo "  ttl on $cg already set (or in progress)"
+done
+
 echo "bootstrap done. Next: ./01-secrets.sh"
