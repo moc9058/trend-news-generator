@@ -63,7 +63,7 @@ export default async function Dashboard({
       <PageHeader title={t('title')} hint={t('hint')} />
 
       {health.threadsRefreshError && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           <Icon name="alert" size={16} className="mt-0.5 shrink-0" />
           <span>
             {t('refreshError')}: {health.threadsRefreshError}
@@ -102,7 +102,7 @@ export default async function Dashboard({
           action={saveAutomation}
           saveLabel={tc('save')}
           savedLabel={tc('saved')}
-          hint={<span className="text-xs text-slate-400">{t('channelToggleHint')}</span>}
+          hint={<span className="text-xs text-fg-faint">{t('channelToggleHint')}</span>}
         >
           {visibleChannels.map((ch) => (
             <input key={ch} type="hidden" name="channels" value={ch} />
@@ -114,10 +114,10 @@ export default async function Dashboard({
                   <th className="pb-3"></th>
                   {FORMATS.map((fmt) => (
                     <th key={fmt} className="pb-3 pr-4 text-left align-top">
-                      <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink">
+                      <div className="font-mono text-[11px] font-semibold uppercase tracking-wider text-fg">
                         {fmt}
                       </div>
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-normal normal-case text-slate-400">
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] font-normal normal-case text-fg-faint">
                         <Icon name="clock" size={11} className="shrink-0" />
                         {scheduleLabel[fmt]}
                       </div>
@@ -128,7 +128,7 @@ export default async function Dashboard({
               <tbody>
                 {categories.map((cat) => (
                   <tr key={cat.slug} className="border-t border-line/60">
-                    <td className="py-3 pr-3 align-top text-[13px] font-medium text-ink">
+                    <td className="py-3 pr-3 align-top text-[13px] font-medium text-fg">
                       {cat.name}
                     </td>
                     {FORMATS.map((fmt) => {
@@ -139,7 +139,7 @@ export default async function Dashboard({
                           <td key={fmt} className="py-3 pr-4 align-top">
                             <Link
                               href={`/${locale}/prompts/${id}`}
-                              className="text-xs text-slate-400 underline underline-offset-2 hover:text-accent"
+                              className="text-xs text-fg-faint underline underline-offset-2 hover:text-accent"
                             >
                               {tp('notSeeded')}
                             </Link>
@@ -197,7 +197,7 @@ export default async function Dashboard({
                   <Link href={`/${locale}/drafts/${d.id}`} className={`${linkCls} min-w-0 truncate`}>
                     {d.title || d.id}
                   </Link>
-                  <span className="ml-auto shrink-0 font-mono text-xs text-slate-400">
+                  <span className="ml-auto shrink-0 font-mono text-xs text-fg-faint">
                     {d.categoryId}
                   </span>
                 </li>
@@ -228,11 +228,11 @@ export default async function Dashboard({
                     <td className={`${tdCls} max-w-64`}>
                       <Link
                         href={`/${locale}/posts/${p.id}`}
-                        className="block truncate text-[13px] font-medium text-ink underline-offset-2 hover:text-accent hover:underline"
+                        className="block truncate text-[13px] font-medium text-fg underline-offset-2 hover:text-accent hover:underline"
                       >
                         {p.title || p.id}
                       </Link>
-                      <div className="mt-0.5 font-mono text-[11px] text-slate-400">
+                      <div className="mt-0.5 font-mono text-[11px] text-fg-faint">
                         {p.format} / {p.categoryId} / {fmtDate(p.createdAt)}
                       </div>
                     </td>

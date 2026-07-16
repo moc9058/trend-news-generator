@@ -62,20 +62,20 @@ export default async function SettingsPage({
                   defaultChecked={settings.globalChannels[key]}
                   className="h-4 w-4 rounded border-line"
                 />
-                <span className="text-sm font-semibold text-ink">{label}</span>
+                <span className="text-sm font-semibold text-fg">{label}</span>
               </label>
             ))}
           </div>
 
           <div className="border-t border-line pt-4">
-            <h3 className="mb-3 text-sm font-semibold text-ink">{t('app')}</h3>
+            <h3 className="mb-3 text-sm font-semibold text-fg">{t('app')}</h3>
             <div className="max-w-xl space-y-4">
               <label className={labelCls}>
                 {t('timezone')}
                 <input name="timezone" defaultValue={settings.timezone} className={inputCls} />
               </label>
               <div className="space-y-2.5 rounded-xl border border-line bg-paper/60 p-4">
-                <label className="flex items-center gap-2.5 text-sm text-slate-700">
+                <label className="flex items-center gap-2.5 text-sm text-fg">
                   <input
                     name="shortRequireApproval"
                     type="checkbox"
@@ -84,7 +84,7 @@ export default async function SettingsPage({
                   />
                   {t('shortRequireApproval')}
                 </label>
-                <label className="flex items-center gap-2.5 text-sm text-slate-700">
+                <label className="flex items-center gap-2.5 text-sm text-fg">
                   <input
                     name="xAllowUrlOnShort"
                     type="checkbox"
@@ -93,7 +93,7 @@ export default async function SettingsPage({
                   />
                   {t('xAllowUrlOnShort')}
                 </label>
-                <label className="flex items-center gap-2.5 text-sm text-slate-700">
+                <label className="flex items-center gap-2.5 text-sm text-fg">
                   <input
                     name="attachImages"
                     type="checkbox"
@@ -101,6 +101,15 @@ export default async function SettingsPage({
                     className="h-4 w-4 rounded border-line"
                   />
                   {t('attachImages')}
+                </label>
+                <label className="flex items-center gap-2.5 text-sm text-fg">
+                  <input
+                    name="researchReviseEnabled"
+                    type="checkbox"
+                    defaultChecked={settings.researchReviseEnabled}
+                    className="h-4 w-4 rounded border-line"
+                  />
+                  {t('researchReviseEnabled')}
                 </label>
               </div>
               <label className={labelCls}>
@@ -120,8 +129,8 @@ export default async function SettingsPage({
               href={`/${locale}${href}`}
               className="group flex flex-col items-start gap-2 rounded-xl border border-line bg-paper/50 p-4 transition-all hover:border-accent-line hover:bg-accent-soft hover:shadow-card"
             >
-              <Icon name={icon} size={18} className="text-slate-400 group-hover:text-accent" />
-              <span className="text-sm font-medium text-ink group-hover:text-accent">
+              <Icon name={icon} size={18} className="text-fg-faint group-hover:text-accent" />
+              <span className="text-sm font-medium text-fg group-hover:text-accent">
                 {tn(key)}
               </span>
             </Link>
@@ -147,11 +156,11 @@ export default async function SettingsPage({
           <tbody>
             {runs.map((r) => (
               <tr key={r.id}>
-                <td className={`${tdCls} w-44 font-mono text-xs text-ink`}>{r.jobType}</td>
+                <td className={`${tdCls} w-44 font-mono text-xs text-fg`}>{r.jobType}</td>
                 <td className={`${tdCls} w-24`}>
                   <span
                     className={`inline-flex items-center gap-1.5 font-mono text-xs font-medium ${
-                      r.ok ? 'text-emerald-700' : 'text-red-600'
+                      r.ok ? 'text-emerald-300' : 'text-red-300'
                     }`}
                   >
                     <span
@@ -160,13 +169,13 @@ export default async function SettingsPage({
                     {r.ok ? 'ok' : 'failed'}
                   </span>
                 </td>
-                <td className={`${tdCls} w-40 font-mono text-xs text-slate-400`}>
+                <td className={`${tdCls} w-40 font-mono text-xs text-fg-faint`}>
                   {fmtDate(r.startedAt)}
                 </td>
-                <td className={`${tdCls} text-xs text-slate-500`}>
+                <td className={`${tdCls} text-xs text-fg-muted`}>
                   <span className="font-mono">{r.stats ? JSON.stringify(r.stats) : ''}</span>
                   {r.errors && r.errors.length > 0 && (
-                    <span className="text-red-600"> {r.errors[0]?.slice(0, 80)}</span>
+                    <span className="text-red-300"> {r.errors[0]?.slice(0, 80)}</span>
                   )}
                 </td>
               </tr>

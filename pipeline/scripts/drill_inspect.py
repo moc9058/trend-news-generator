@@ -1,4 +1,7 @@
-"""Read-only inspector for the M1 acceptance drill (docs/plans/m1-acceptance-drill.md).
+"""Read-only inspector for the resume / crash-recovery acceptance drill.
+
+Drill procedure: docs/tech-report/05-detailed-design/10-research-agent.md
+                 §6.1 「手動受け入れドリル(resume / クラッシュ復旧)」.
 
 Usage:  cd pipeline && RUN=rr_... uv run python scripts/drill_inspect.py
 Prints the run's status/phase/budget, checkpoint counts, and phase_start tally.

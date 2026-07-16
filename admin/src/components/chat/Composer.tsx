@@ -36,7 +36,7 @@ function Toggle({
       className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
         active
           ? 'bg-accent-soft text-accent ring-1 ring-inset ring-accent-line'
-          : 'text-slate-500 hover:bg-paper/60 hover:text-slate-700'
+          : 'text-fg-muted hover:bg-surface-2 hover:text-fg'
       }`}
     >
       {children}
@@ -65,7 +65,7 @@ export function Composer({
   };
 
   return (
-    <div className="rounded-xl border border-line bg-white shadow-card focus-within:border-accent-line focus-within:ring-2 focus-within:ring-accent/10">
+    <div className="rounded-xl border border-line bg-surface shadow-card focus-within:border-accent-line focus-within:ring-2 focus-within:ring-accent/20">
       <textarea
         rows={2}
         value={content}
@@ -78,11 +78,11 @@ export function Composer({
           }
         }}
         placeholder={research ? labels.placeholderResearch : labels.placeholder}
-        className="block w-full resize-none rounded-t-xl bg-transparent px-3.5 py-3 text-sm text-ink placeholder:text-slate-300 focus:outline-none"
+        className="block w-full resize-none rounded-t-xl bg-transparent px-3.5 py-3 text-sm text-fg placeholder:text-fg-faint focus:outline-none"
       />
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/60 px-2.5 py-2">
         <div className="flex flex-wrap items-center gap-1">
-          <div className="flex items-center gap-0.5 rounded-lg bg-paper/50 p-0.5">
+          <div className="flex items-center gap-0.5 rounded-lg bg-surface-2/60 p-0.5">
             <Toggle active={!research} onClick={() => setMode('chat')} title={labels.modeChatHint}>
               {labels.modeChat}
             </Toggle>
@@ -95,7 +95,7 @@ export function Composer({
             </Toggle>
           </div>
           {research && (
-            <div className="flex items-center gap-0.5 rounded-lg bg-paper/50 p-0.5">
+            <div className="flex items-center gap-0.5 rounded-lg bg-surface-2/60 p-0.5">
               <Toggle
                 active={depth === 'quick'}
                 onClick={() => setDepth('quick')}

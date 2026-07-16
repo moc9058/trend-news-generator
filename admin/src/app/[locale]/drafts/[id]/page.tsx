@@ -17,10 +17,10 @@ export default async function DraftDetailPage({
   return (
     <div>
       <header className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold tracking-tight text-ink">{t('editDraft')}</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-fg">{t('editDraft')}</h1>
         <StatusBadge status={post.status} />
         <Chip>{post.format}</Chip>
-        <span className="font-mono text-xs text-slate-400">
+        <span className="font-mono text-xs text-fg-faint">
           {post.categoryId} · ${post.tokenUsage?.costUsd?.toFixed(3) ?? '0'}
         </span>
       </header>

@@ -31,7 +31,7 @@ export default async function ChannelsPage() {
             <tbody>
               {FORMATS.map((fmt) => (
                 <tr key={fmt}>
-                  <td className={`${tdCls} font-mono text-xs font-medium text-ink`}>{fmt}</td>
+                  <td className={`${tdCls} font-mono text-xs font-medium text-fg`}>{fmt}</td>
                   {CHANNELS.map((channel) => {
                     const id = `${cat.slug}_${fmt}_${channel}`;
                     const cfg = byId.get(id);
@@ -61,7 +61,7 @@ export default async function ChannelsPage() {
                             <select
                               name="language"
                               defaultValue={cfg?.language ?? 'en'}
-                              className="rounded-md border border-line bg-white px-1.5 py-1 font-mono text-xs text-slate-700 focus:border-accent focus:outline-none"
+                              className="rounded-md border border-line bg-surface-2 px-1.5 py-1 font-mono text-xs text-fg focus:border-accent focus:outline-none"
                             >
                               {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
                             </select>

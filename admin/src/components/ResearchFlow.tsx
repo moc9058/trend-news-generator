@@ -47,14 +47,14 @@ interface FlowNodeData extends Record<string, unknown> {
 }
 
 const STATE_CLS: Record<NodeState, string> = {
-  pending: 'border-line bg-white text-slate-400',
-  running: 'border-accent bg-accent-soft text-ink',
-  done: 'border-accent-line bg-white text-ink',
-  error: 'border-red-300 bg-red-50 text-red-800',
+  pending: 'border-line bg-surface text-fg-faint',
+  running: 'border-accent bg-accent-soft text-fg',
+  done: 'border-accent-line bg-surface text-fg',
+  error: 'border-red-500/40 bg-red-500/10 text-red-300',
 };
 
 const STATE_DOT: Record<NodeState, string> = {
-  pending: 'bg-slate-300',
+  pending: 'bg-slate-500',
   running: 'bg-accent animate-pulse',
   done: 'bg-accent',
   error: 'bg-red-500',
@@ -74,9 +74,9 @@ function FlowNode({ data }: NodeProps<Node<FlowNodeData>>) {
         <span className="font-mono text-xs font-semibold">{data.label}</span>
         {data.warn && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" title="!" />}
       </div>
-      <div className="mt-0.5 truncate text-[10px] leading-4 text-slate-500">{data.sub}</div>
+      <div className="mt-0.5 truncate text-[10px] leading-4 text-fg-muted">{data.sub}</div>
       {data.metrics.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-x-2 font-mono text-[10px] text-slate-400">
+        <div className="mt-1 flex flex-wrap gap-x-2 font-mono text-[10px] text-fg-faint">
           {data.metrics.map((m) => <span key={m}>{m}</span>)}
         </div>
       )}
@@ -247,12 +247,12 @@ export function ResearchFlow({ run, events }: { run: ResearchRun; events: Resear
           elementsSelectable={false}
           proOptions={{ hideAttribution: true }}
         >
-          <Background gap={18} size={1} />
+          <Background gap={18} size={1} color="#262B4A" />
         </ReactFlow>
       </div>
       <div className="flex flex-wrap items-center gap-4 border-t border-line/60 px-5 py-2">
         {(['pending', 'running', 'done', 'error'] as NodeState[]).map((s) => (
-          <span key={s} className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+          <span key={s} className="inline-flex items-center gap-1.5 text-[11px] text-fg-muted">
             <span className={`h-1.5 w-1.5 rounded-full ${STATE_DOT[s]}`} />
             {t(`flowState_${s}`)}
           </span>

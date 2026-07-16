@@ -179,6 +179,7 @@ export async function saveAppSettings(formData: FormData): Promise<ActionResult>
         shortRequireApproval: formData.get('shortRequireApproval') === 'on',
         xAllowUrlOnShort: formData.get('xAllowUrlOnShort') === 'on',
         attachImages: formData.get('attachImages') === 'on',
+        researchReviseEnabled: formData.get('researchReviseEnabled') === 'on',
         globalChannels: {
           x: formData.get('channel_x') === 'on',
           threads: formData.get('channel_threads') === 'on',
@@ -336,6 +337,25 @@ export async function approveResearchPlan(runId: string): Promise<ActionResult> 
 
 export async function cancelChat(threadId: string): Promise<ActionResult> {
   const result = await pipeline.cancelChatThread(threadId);
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+export async function renameChatThread(threadId: string, title: string): Promise<ActionResult> {
+  if (!title.trim()) return { ok: false, detail: 'title is required' };
+  const result = await pipeline.renameChatThread(threadId, title.trim());
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+export async function archiveChatThread(threadId: string): Promise<ActionResult> {
+  const result = await pipeline.archiveChatThread(threadId);
+  revalidatePath('/', 'layout');
+  return result;
+}
+
+export async function deleteChatThread(threadId: string): Promise<ActionResult> {
+  const result = await pipeline.deleteChatThread(threadId);
   revalidatePath('/', 'layout');
   return result;
 }

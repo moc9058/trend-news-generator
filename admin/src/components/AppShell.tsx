@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
+import { MotionConfig } from 'framer-motion';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { NavLink } from './NavLink';
 import { Icon, type IconName } from './icons';
@@ -13,7 +14,7 @@ export type NavGroup = { group: string; groupLabel: string; items: NavItem[] };
 function Brand({ compact }: { compact?: boolean }) {
   return (
     <div className="flex items-center gap-3 px-1">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-teal-500 to-accent-hover font-mono text-sm font-bold text-white shadow-raised">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-indigo-500 font-mono text-sm font-bold text-white shadow-raised">
         T
       </div>
       <div className={compact ? 'hidden leading-tight lg:block' : 'leading-tight'}>
@@ -114,9 +115,10 @@ export function AppShell({
   }, [open]);
 
   return (
-    <div className="flex min-h-screen">
+    <MotionConfig reducedMotion="user">
+      <div className="flex min-h-screen">
       {/* Desktop rail (lg+): icon-only at lg, full at lg width, exactly as before. */}
-      <aside className="sticky top-0 hidden h-screen w-16 shrink-0 flex-col border-r border-white/5 bg-gradient-to-b from-ink to-[#10141C] px-3 py-5 lg:flex lg:w-64 lg:px-4">
+      <aside className="sticky top-0 hidden h-screen w-16 shrink-0 flex-col border-r border-white/5 bg-gradient-to-b from-ink to-bg px-3 py-5 lg:flex lg:w-64 lg:px-4">
         <div className="mb-8">
           <Brand compact />
         </div>
@@ -126,14 +128,14 @@ export function AppShell({
       {/* Mobile off-canvas drawer + backdrop (below lg). */}
       <div className={`lg:hidden ${open ? '' : 'pointer-events-none'}`}>
         <div
-          className={`fixed inset-0 z-40 bg-ink/50 backdrop-blur-sm transition-opacity duration-200 ${
+          className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-200 ${
             open ? 'opacity-100' : 'opacity-0'
           }`}
           onClick={() => setOpen(false)}
           aria-hidden
         />
         <aside
-          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82vw] flex-col bg-gradient-to-b from-ink to-[#10141C] px-4 py-5 shadow-2xl transition-transform duration-200 ease-out ${
+          className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[82vw] flex-col bg-gradient-to-b from-ink to-bg px-4 py-5 shadow-2xl transition-transform duration-200 ease-out ${
             open ? 'translate-x-0' : '-translate-x-full'
           }`}
           role="dialog"
@@ -156,10 +158,10 @@ export function AppShell({
 
       {/* Content column with a mobile-only top bar carrying the menu trigger. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-white/90 px-4 py-2.5 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-surface/80 px-4 py-2.5 backdrop-blur lg:hidden">
           <button
             onClick={() => setOpen(true)}
-            className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-paper"
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-surface-2"
             aria-label="Open menu"
           >
             <Icon name="menu" size={20} />
@@ -168,7 +170,7 @@ export function AppShell({
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent font-mono text-xs font-bold text-white">
               T
             </div>
-            <span className="text-sm font-bold tracking-tight text-ink">Trend News</span>
+            <span className="text-sm font-bold tracking-tight text-fg">Trend News</span>
           </div>
         </header>
 
@@ -176,6 +178,7 @@ export function AppShell({
           <div className="mx-auto max-w-6xl px-4 py-6 sm:px-5 lg:px-10 lg:py-8">{children}</div>
         </main>
       </div>
-    </div>
+      </div>
+    </MotionConfig>
   );
 }

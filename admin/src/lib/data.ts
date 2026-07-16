@@ -165,6 +165,7 @@ export async function getAppSettings(): Promise<AppSettingsDoc> {
     shortRequireApproval: data.shortRequireApproval ?? false,
     xAllowUrlOnShort: data.xAllowUrlOnShort ?? false,
     attachImages: data.attachImages ?? true,
+    researchReviseEnabled: data.researchReviseEnabled ?? true,
     globalChannels: {
       x: data.globalChannels?.x ?? false,
       threads: data.globalChannels?.threads ?? false,
@@ -216,6 +217,19 @@ export async function getResearchRuns(limit = 40): Promise<ResearchRun[]> {
   const snap = await db().collection('researchRuns')
     .orderBy('createdAt', 'desc').limit(limit).get();
   return snap.docs.map((d) => mapResearchRun(d.id, d.data()));
+}
+
+/** Report runs still working toward a draft (or that failed before producing one),
+ * for the approval page's in-progress banner. A run drops off this list the moment
+ * `review._handoff` creates its draft `posts` doc (postId set → shown by getDrafts).
+ * Filtered in memory off the recent-runs query to avoid a composite index. */
+const IN_PROGRESS_RESEARCH_STATUSES = new Set([
+  'queued', 'running', 'awaiting_plan_approval', 'failed', 'budget_exhausted',
+]);
+
+export async function getInProgressResearchRuns(limit = 40): Promise<ResearchRun[]> {
+  const runs = await getResearchRuns(limit);
+  return runs.filter((r) => !r.postId && IN_PROGRESS_RESEARCH_STATUSES.has(r.status));
 }
 
 export async function getResearchRun(id: string): Promise<ResearchRun | null> {

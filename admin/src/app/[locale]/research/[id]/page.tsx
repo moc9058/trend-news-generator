@@ -42,7 +42,7 @@ export default async function ResearchRunPage({
         )}
         {run.postId && (
           <Link href={`/${locale}/drafts/${run.postId}`}
-            className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-2 text-sm font-medium text-accent shadow-card hover:bg-paper">
+            className="inline-flex items-center rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-accent shadow-card hover:bg-paper">
             {t('openDraft')}
           </Link>
         )}
@@ -71,7 +71,7 @@ export default async function ResearchRunPage({
             {run.plan.rqs.map((rq) => (
               <li key={rq.id} className="flex flex-wrap items-center gap-2 text-sm">
                 <Chip>{rq.id}</Chip>
-                <span className={rq.resolved ? 'text-ink' : 'text-slate-500'}>{rq.q}</span>
+                <span className={rq.resolved ? 'text-fg' : 'text-fg-muted'}>{rq.q}</span>
                 <span className="ml-auto flex gap-1">
                   {rq.strategies.map((s) => <Chip key={s}>{s}</Chip>)}
                 </span>
@@ -98,7 +98,7 @@ export default async function ResearchRunPage({
                       className="font-medium text-accent underline-offset-2 hover:underline">
                       {e.title || e.url}
                     </a>
-                    <div className="mt-0.5 font-mono text-[11px] text-slate-400">
+                    <div className="mt-0.5 font-mono text-[11px] text-fg-faint">
                       {e.sourceType}{e.venue ? ` · ${e.venue}` : ''}{e.publishedAt ? ` · ${e.publishedAt}` : ''}
                     </div>
                   </td>
@@ -122,9 +122,9 @@ export default async function ResearchRunPage({
                 <tr key={c.claimId}>
                   <td className={tdCls}>
                     <Chip>{c.renderAs || c.verdict}</Chip>
-                    {c.stance && <div className="mt-1 font-mono text-[11px] text-slate-400">{c.stance}</div>}
+                    {c.stance && <div className="mt-1 font-mono text-[11px] text-fg-faint">{c.stance}</div>}
                   </td>
-                  <td className={`${tdCls} text-sm text-slate-700`}>{c.text}</td>
+                  <td className={`${tdCls} text-sm text-fg`}>{c.text}</td>
                 </tr>
               ))}
             </tbody>
@@ -138,11 +138,11 @@ export default async function ResearchRunPage({
             {events.map((ev) => (
               <li key={ev.id} className="flex items-center gap-3 px-5 py-2 text-sm">
                 <Chip>{ev.phase}</Chip>
-                <span className="font-mono text-xs text-slate-500">{ev.actor}</span>
-                <span className={ev.ok ? 'text-slate-600' : 'text-red-600'}>{ev.action}</span>
-                {ev.model && <span className="font-mono text-[11px] text-slate-400">{ev.model}</span>}
-                {ev.error && <span className="truncate text-xs text-red-500">{ev.error}</span>}
-                <span className="ml-auto shrink-0 font-mono text-[11px] text-slate-400">
+                <span className="font-mono text-xs text-fg-muted">{ev.actor}</span>
+                <span className={ev.ok ? 'text-fg-muted' : 'text-red-300'}>{ev.action}</span>
+                {ev.model && <span className="font-mono text-[11px] text-fg-faint">{ev.model}</span>}
+                {ev.error && <span className="truncate text-xs text-red-300">{ev.error}</span>}
+                <span className="ml-auto shrink-0 font-mono text-[11px] text-fg-faint">
                   {ev.costUsd ? `$${ev.costUsd.toFixed(3)}` : ''}
                 </span>
               </li>
@@ -156,9 +156,9 @@ export default async function ResearchRunPage({
 
 function Meta({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-line bg-white p-4 shadow-card">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
-      <div className="mt-1 font-mono text-lg font-semibold text-ink">{value}</div>
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-card">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-faint">{label}</div>
+      <div className="mt-1 font-mono text-lg font-semibold text-fg">{value}</div>
     </div>
   );
 }

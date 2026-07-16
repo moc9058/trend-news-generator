@@ -48,10 +48,10 @@ export default async function ResearchPage({
                           className="font-medium text-accent underline-offset-2 hover:underline">
                           {r.theme || r.id}
                         </Link>
-                        <div className="mt-0.5 font-mono text-[11px] text-slate-400">{r.categoryId}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-fg-faint">{r.categoryId}</div>
                       </td>
                       <td className={tdCls}><Chip>{r.phase}</Chip></td>
-                      <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-slate-500`}>
+                      <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-fg-muted`}>
                         ${(r.budget?.usdSpent ?? 0).toFixed(2)} / {(r.budget?.usdCap ?? 0).toFixed(0)}
                       </td>
                     </tr>

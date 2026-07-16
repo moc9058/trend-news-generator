@@ -38,15 +38,15 @@ export default async function SourcesPage() {
           <tbody>
             {sources.map((s) => (
               <tr key={s.id} className="transition-colors hover:bg-paper/50">
-                <td className={`${tdCls} font-mono text-xs text-slate-600`}>{s.id}</td>
-                <td className={`${tdCls} font-mono text-xs text-slate-500`}>{s.categoryId}</td>
+                <td className={`${tdCls} font-mono text-xs text-fg-muted`}>{s.id}</td>
+                <td className={`${tdCls} font-mono text-xs text-fg-muted`}>{s.categoryId}</td>
                 <td className={tdCls}>
                   <Chip>{s.type}</Chip>
                 </td>
-                <td className={`${tdCls} max-w-md truncate text-xs text-slate-500`}>
+                <td className={`${tdCls} max-w-md truncate text-xs text-fg-muted`}>
                   {s.url || s.query}
                 </td>
-                <td className={`${tdCls} font-mono text-xs text-slate-400`}>
+                <td className={`${tdCls} font-mono text-xs text-fg-faint`}>
                   {s.lastFetchedAt?.slice(0, 16).replace('T', ' ')}
                 </td>
                 <td className={tdCls}>
@@ -96,7 +96,7 @@ export default async function SourcesPage() {
               ))}
             </select>
           </label>
-          <label className="flex items-end gap-2 pb-2.5 text-sm text-slate-600">
+          <label className="flex items-end gap-2 pb-2.5 text-sm text-fg-muted">
             <input name="enabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-line" />
             {tc('enabled')}
           </label>

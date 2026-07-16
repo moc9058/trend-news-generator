@@ -30,9 +30,9 @@ export default async function CategoriesPage() {
           <tbody>
             {categories.map((c) => (
               <tr key={c.slug} className="transition-colors hover:bg-paper/50">
-                <td className={`${tdCls} font-mono text-xs text-slate-600`}>{c.slug}</td>
-                <td className={`${tdCls} text-[13px] font-medium text-ink`}>{c.name}</td>
-                <td className={`${tdCls} max-w-md text-xs text-slate-500`}>
+                <td className={`${tdCls} font-mono text-xs text-fg-muted`}>{c.slug}</td>
+                <td className={`${tdCls} text-[13px] font-medium text-fg`}>{c.name}</td>
+                <td className={`${tdCls} max-w-md text-xs text-fg-muted`}>
                   {c.searchHints?.join(', ')}
                 </td>
                 <td className={tdCls}>
@@ -68,7 +68,7 @@ export default async function CategoriesPage() {
             {t('sortOrder')}
             <input name="sortOrder" type="number" defaultValue={0} className={inputCls} />
           </label>
-          <label className="flex items-end gap-2 pb-2.5 text-sm text-slate-600">
+          <label className="flex items-end gap-2 pb-2.5 text-sm text-fg-muted">
             <input name="enabled" type="checkbox" defaultChecked className="h-4 w-4 rounded border-line" />
             {tc('enabled')}
           </label>

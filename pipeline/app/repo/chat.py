@@ -92,6 +92,46 @@ def list_threads(limit: int = 30) -> list[ChatThread]:
     return [ChatThread(id=d.id, **d.to_dict()) for d in docs]
 
 
+def rename_thread(thread_id: str, title: str) -> bool:
+    """Set a thread's title (≤80 chars, matching the auto-title cap). False when
+    the thread does not exist."""
+    if get_thread(thread_id) is None:
+        return False
+    update_thread(thread_id, {"title": title[:80]})
+    return True
+
+
+def set_thread_status(thread_id: str, status: str) -> bool:
+    """Archive / unarchive a thread. `list_threads` only returns active ones, so
+    archiving hides it from the sidebar without deleting anything. False when the
+    thread does not exist."""
+    if get_thread(thread_id) is None:
+        return False
+    update_thread(thread_id, {"status": status})
+    return True
+
+
+def delete_thread(thread_id: str, batch_size: int = 200) -> bool:
+    """Delete a thread and its `messages` subcollection. Firestore does not
+    cascade, so the subcollection is drained in batches first, then the thread
+    document. False when the thread does not exist."""
+    client = db()
+    thread_ref = client.collection(COLLECTION).document(thread_id)
+    if not thread_ref.get().exists:
+        return False
+    messages = thread_ref.collection(MESSAGES)
+    while True:
+        docs = list(messages.limit(batch_size).stream())
+        if not docs:
+            break
+        batch = client.batch()
+        for d in docs:
+            batch.delete(d.reference)
+        batch.commit()
+    thread_ref.delete()
+    return True
+
+
 # --------------------------------------------------------------------------- #
 # Messages                                                                     #
 # --------------------------------------------------------------------------- #

@@ -43,7 +43,7 @@ export default async function FocusPage({
                     <Chip>{fmt}</Chip>
                     <Link
                       href={`/${locale}/prompts/${id}`}
-                      className="text-[11px] text-slate-400 underline underline-offset-2 hover:text-accent"
+                      className="text-[11px] text-fg-faint underline underline-offset-2 hover:text-accent"
                     >
                       {t('advancedEdit')}
                     </Link>
@@ -77,7 +77,7 @@ export default async function FocusPage({
                       </label>
                     </SaveForm>
                   ) : (
-                    <p className="text-xs text-slate-400">{tp('notSeeded')}</p>
+                    <p className="text-xs text-fg-faint">{tp('notSeeded')}</p>
                   )}
                 </div>
               );

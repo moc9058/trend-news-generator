@@ -16,6 +16,8 @@ import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
 import app.research.llm as llm
+from app.models import AppSettings
+from app.repo import configs
 from app.research.schemas import BudgetState, ResearchRun
 from tests.research.conftest import (
     FakeConn,
@@ -142,6 +144,38 @@ def test_review_revise_loops_back_to_write_once(store, monkeypatch):
 
     assert calls == {"critic": 2, "writer": 2}  # one corrective rewrite
     assert final["revisions"] == 1
+    assert store.runs[run.id].status == "awaiting_review"
+    assert store.runs[run.id].postId
+
+
+def test_review_revise_disabled_by_setting_forces_proceed(store, monkeypatch):
+    # researchReviseEnabled=False caps max_revisions at 0: even a failed first
+    # critic verdict must proceed straight to handoff, no corrective rewrite.
+    monkeypatch.setattr(configs, "app_settings",
+                        lambda: AppSettings(researchReviseEnabled=False))
+    orig = llm.structured
+    calls = {"critic": 0, "writer": 0}
+
+    def wrapper(schema, model, system, user, **kw):
+        actor = kw.get("actor")
+        if actor == "writer":
+            calls["writer"] += 1
+        if actor == "critic":
+            calls["critic"] += 1
+            if calls["critic"] == 1:
+                return schema.model_validate({"findings": [
+                    {"kind": "unsupported_assertion", "location": "s1",
+                     "detail": "no citation", "action": "delete"}], "passed": False})
+        return orig(schema, model, system, user, **kw)
+    monkeypatch.setattr(llm, "structured", wrapper)
+
+    run = _run("rr_revise_off")
+    store.runs[run.id] = run
+
+    final, _ = drive(run)
+
+    assert calls == {"critic": 1, "writer": 1}  # no corrective rewrite
+    assert final["revisions"] == 0
     assert store.runs[run.id].status == "awaiting_review"
     assert store.runs[run.id].postId
 

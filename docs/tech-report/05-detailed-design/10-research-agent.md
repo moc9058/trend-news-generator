@@ -182,7 +182,7 @@ plan(intake+テーマ自動選定+RQ 分解)→(任意: awaiting_plan_approval)
 | extract | 取得(robots/SSRF ガード)→GCS スナップショット(sha256)→本文抽出→引用・論点抽出→EvidenceRecord。resume 粒度確保のため統合せず単独フェーズのまま | evidence docID = urlHash、`create_if_absent` 方式 | ~$1.5 | $0.50 |
 | verify | Claim 化→複数ソース照合→矛盾検出→立場ラベル→信頼度確定+決定的カバレッジ判定(RQ ごと evidence ≥2 で resolved、`state.gap_decision(coverage, loops, max_loops, can_afford_gather)`)→不足なら gather へ(最大 `research_max_loops`=2) | claims を claimId で upsert、loops カウンタを永続化 | ~$1.7 | $0.60 |
 | write | アウトライン→章執筆(canonical=ja)。**全ての断定文は evidenceId を引用**。オーナーの常設指示 `promptTemplates.{categoryId}_report.customInstructions` があれば `configs.custom_instructions(run.categoryId, report)` で読み、`generators/prompts.py` の `custom_instructions_block()` を user プロンプト末尾に付加(出力言語は変えない。[03-generate.md](03-generate.md) §4.1)。続けて同フェーズ内で canonical の構造化セクションから ko/en を並行生成(引用構造は同一強制。Localizer の `llm_call` イベントに `detail.language`) | 草稿・言語別本文を run doc(GCS 併用)に保存 | ~$2.7 | $1.00 |
-| review | critic レッグ: (a)機械検査 = 引用文がスナップショット内に実在するか(citecheck)+三言語間の数値/日付/引用数一致 (b)LLM 検査 = 無根拠断定の走査。判定は `state.critic_decision()` → 不合格なら write へ修正1回。合格(proceed)時のみ handoff レッグ: `Post(format=report, status=draft, localizations={ja,ko,en}, researchRunId)` 作成、run を awaiting_review へ | 検査結果を保存。postId 保存済みなら handoff は skip | ~$0.8 | $0.30 |
+| review | critic レッグ: (a)機械検査 = 引用文がスナップショット内に実在するか(citecheck)+三言語間の数値/日付/引用数一致 (b)LLM 検査 = 無根拠断定の走査。判定は `state.critic_decision(audit, revisions, max_revisions)` → 不合格かつ `revisions < max_revisions` なら write へ修正1回。合格(proceed)時のみ handoff レッグ: `Post(format=report, status=draft, localizations={ja,ko,en}, researchRunId)` 作成、run を awaiting_review へ。`max_revisions` は `settings/app.researchReviseEnabled`(既定 true→1、false→0)から`phases/review.py::run()`が都度算出 — false のときは監査に落ちても常に proceed する | 検査結果を保存。postId 保存済みなら handoff は skip | ~$0.8 | $0.30 |
 
 合計目安 ~$8.3 + 予備 → **ハード上限 $10**(`budgetUsd`)。超過見込み時(残額 < 当該フェーズの `PHASE_MIN_USD`)は次フェーズに入らず graceful degrade(§7.2)。
 
@@ -579,6 +579,17 @@ settings/app                             # 追加: reportAutoTheme, reportBudget
 
 **後始末**: 成功(`awaiting_review` を run ドキュメントで確認)した run だけ `delete_thread()` でチェックポイントを消す。失敗・cancel・承認待ちのものは**残す**(再開の唯一の手段。放置分は TTL が回収 — §6.7)。
 
+#### 手動受け入れドリル(resume / クラッシュ復旧 — テストで覆えない2点)
+
+テストスイート(`test_graph_golden.py` ほか)は resume ロジックを単体で固定するが、**2つのジョブ実行にまたがる承認 interrupt/resume** と **本番コンテナのハードクラッシュからのチェックポイント復旧**は本番でしか確認できない。以下は M1 移行(自前 Harness → LangGraph)受け入れ時に一度実施した手動ドリルの手順。**依存バンプや runner/checkpointer を触った後の回帰確認にも再利用できる**。
+
+検査は書き込みをしない read-only スクリプト **`pipeline/scripts/drill_inspect.py`** を使う(`RUN=rr_... uv run python scripts/drill_inspect.py`。run doc の `status`/`phase`/`budget`、`checkpoints`/`checkpoint_writes` サブコレクションの件数、`events` の `phase_start` 集計を印字。ADC 必須。admin の **Research → run detail** 画面でも同じ状態が見える)。各 run は budgetUsd の cap(下記は `2`)まで消費 — 3ドリルで合計 $10 弱、レポート予算内。
+
+- **ドリルA(承認ゲートの interrupt/resume・ハッピーパス)**: launcher で `budgetUsd=2` / **planApproval=ON** で起動 → 1–2分で `status=awaiting_plan_approval` `phase=gather` `checkpoints>=1` `phase_start={plan:1}` に停止(gather の**前**で interrupt、停止はチェックポイントとして durable)。admin で **Approve plan**(`POST /api/research/runs/{id}/approve-plan`。`awaiting_plan_approval` 以外への承認は `409`)→ **2回目のジョブ実行**が同一スレッドを resume して gather→…→review を走り、`status=awaiting_review` `postId=post_...` `usdSpent<=2` に到達。**要点: `plan` の `phase_start` は 1 のまま**(承認は再プランしない)、成功後に `checkpoints=0`/`checkpoint_writes=0`(evidence/claim/events は残す)。draft の `ja`/`ko`/`en` 三言語が非空。LangSmith は `research:<runId>` ルートトレース1本、Threads ビューで承認前後の2実行が `session_id=runId` で1スレッド、tags `research`/`format:report`/`trigger:manual`。
+- **ドリルB(クラッシュ復旧 — M1 が根治した中核)**: `budgetUsd=2` / planApproval=OFF で起動 → `extract` に入ったら**実行中エグゼキューションをハードキル**(graceful cancel ではなくクラッシュ相当): `gcloud run jobs executions cancel "$EXEC" --region=asia-northeast1`(`$EXEC` は `executions list --limit=1` の最新)→ `checkpoints>=1` と部分的な `phase_start`(例 `plan`/`gather` 完了・`extract` 途中)を確認 → `gcloud run jobs execute job-generate-report --region=asia-northeast1` で再実行 → `claim_next` が同一 run を再取得し `graph.stream(None, config)` で**続きから**。完走後、**キル前に完了していたフェーズの `phase_start` が 2 になっていない**(=再実行されていない)こと、`localizations.ja.body` 非空(旧 Harness の空 Post バグが構造的に消えた証拠)を確認。**注意**: 正常な `verify→gather` カバレッジループも2度目の `gather`/`extract`/`verify` を生むので `loops` と併読 — 余分な `phase_start` が `loops=0` なら resume バグ、`loops>=1` なら正常ループ。
+- **ドリルC(graceful cancel)**: 起動中に admin で **Cancel**(`cancelRequested=true`)→ runner がグラフ前・superstep 境界で検知し `status=cancelled` に停止。チェックポイントは**意図的に残す**(部分 run を検分可能に。TTL が14日で回収)ので、ここでの非0 `checkpoints` はリークではなく仕様。
+- **失敗時**: `awaiting_plan_approval` に到達しない → 本番イメージが `graph/`/`langgraph` を import できていない疑い(`gcloud logging read` でジョブログの import エラー確認)。resume がトップから再走(`phase_start=2` かつ `loops=0`)→ キル直後(B)に `checkpoints` が空でないかを再確認(空なら `put` が durable に着地していない)。空 Post → M1 が狙う回帰そのもの — runId・`events`・Post doc を保全してから再試行。一般的な復旧手順は `docs/runbook.md`「Research Agent(レポート)の失敗対応」。
+
 ### 6.2 report の言語別3ページ公開(externalId の罠)
 
 - `_publish_notion` は `post_id` を受けるシグネチャに変更(現行は post のみ — 言語別の途中永続化に必須)
@@ -737,7 +748,7 @@ researchRuns/{runId}/checkpoint_writes/{doc}/checkpoint_chunks/{i}
 
 ### 8.2 実行基盤の選択 — 自前 Harness から LangGraph へ(2026-07-15 改訂)
 
-> **この節は当初「エージェントフレームワーク不採用」と結論していた。2026-07-15 に LangGraph を採用してその判断を覆したので、旧結論を残さず全面改訂する。**(移行計画: `docs/plans/langgraph-migration-plan.md`)
+> **この節は当初「エージェントフレームワーク不採用」と結論していた。2026-07-15 に LangGraph を採用してその判断を覆したので、旧結論を残さず全面改訂する。**(移行は M0〜M2 の段階実行で完了済み。受け入れ検証の手順は §6.1「手動受け入れドリル」、依存 pin のバンプ手順は下記「移行で受け入れたリスク」を参照)
 
 #### 現行: LangGraph(OSS ライブラリ・プロセス内実行)
 
@@ -774,7 +785,9 @@ researchRuns/{runId}/checkpoint_writes/{doc}/checkpoint_chunks/{i}
 
 #### 移行で受け入れたリスク
 
-- **サードパーティ ABI への依存**: `FirestoreCheckpointSaver` は `BaseCheckpointSaver` を直接実装し、`JsonPlusSerializer` のシリアライズ形式に乗っている。このため `langgraph>=1.2,<2` / `langgraph-checkpoint>=4.1,<5` と**上限を固定**している(リポジトリの他の依存は `>=` のみ)。バンプ時は移行計画書の step-0 プローブを再実行すること。カナリアは `tests/research/test_checkpointer_firestore.py`
+- **サードパーティ ABI への依存**: `FirestoreCheckpointSaver` は `BaseCheckpointSaver` を直接実装し、`JsonPlusSerializer` のシリアライズ形式に乗っている。このため `langgraph>=1.2,<2` / `langgraph-checkpoint>=4.1,<5` / `langsmith>=0.10,<1` と**上限を固定**している(リポジトリの他の依存は `>=` のみ)。カナリアは `tests/research/test_checkpointer_firestore.py`(checkpointer)と `tests/research/test_observability.py`(LangSmith wrap)。**上限をバンプするときは、コミットしない使い捨てプローブ(scratchpad で `uv run python`)を先に通してから pin を上げること**:
+  - `langgraph` / `langgraph-checkpoint`: `from langgraph.types import Send, Command, interrupt` / `from langgraph.runtime import Runtime` / `from langgraph.checkpoint.base import BaseCheckpointSaver, WRITES_IDX_MAP` / `from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer` / `from langgraph.checkpoint.memory import InMemorySaver` の import が通ること。3ノードのトイグラフで (i) `interrupt()` が `stream_mode="updates"` に `"__interrupt__"` チャンクとして現れる (ii) `Command(resume=True)` で再開できる (iii) `stream(None, config)` でクラッシュ resume が続きから走る、の3挙動を確認。インストール版をコミットメッセージに記録。
+  - `langsmith`: `from langsmith import Client; hasattr(Client(), "flush")`(無ければ `get_cached_client().flush()` フォールバック) / `wrap_openai(client, tracing_extra={"client": ...})` が受理されるか / wrap 済みメソッドの判別属性(`__wrapped__` 等 — inertness テストが依存)/ `LANGSMITH_TRACING` 未設定時に wrap 済みクライアント呼び出しが LangSmith へ I/O しないこと。
 - **`DeltaChannel` 禁止**: チェックポイントを1つの blob として保存する設計は、チャネルが部分更新を返さないことに依存する。`builder.py` の assert が破れを検知する
 
 ### 8.2.1 M3(フェーズ跨ぎパイプライン)— 実装しない将来スケッチ

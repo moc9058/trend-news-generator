@@ -43,7 +43,7 @@ export function ResearchLauncher({ categories }: { categories: { slug: string; n
             defaultValue="10" className={inputCls} />
         </label>
       </div>
-      <label className="flex items-center gap-2.5 text-sm text-slate-700">
+      <label className="flex items-center gap-2.5 text-sm text-fg">
         <input name="planApproval" type="checkbox" className="h-4 w-4 rounded border-line" />
         {t('planApproval')}
       </label>
@@ -54,7 +54,7 @@ export function ResearchLauncher({ categories }: { categories: { slug: string; n
       </button>
       {result && (
         <div className={`rounded-lg px-3 py-2 font-mono text-xs ${
-          result.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+          result.ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
           {result.ok ? t('launched') : result.detail.slice(0, 300)}
         </div>
       )}

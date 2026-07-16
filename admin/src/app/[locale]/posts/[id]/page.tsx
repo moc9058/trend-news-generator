@@ -43,11 +43,11 @@ export default async function PostDetailPage({
         <Chip>{post.format}</Chip>
         <Chip>{post.categoryId}</Chip>
         {post.tokenUsage && (
-          <span className="font-mono text-xs text-slate-500">
+          <span className="font-mono text-xs text-fg-muted">
             ${post.tokenUsage.costUsd?.toFixed(3)}
           </span>
         )}
-        <span className="font-mono text-xs text-slate-400">
+        <span className="font-mono text-xs text-fg-faint">
           {post.createdAt?.slice(0, 16).replace('T', ' ')}
         </span>
         {post.researchRunId && (
@@ -65,18 +65,18 @@ export default async function PostDetailPage({
               className="flex flex-col gap-2.5 rounded-xl border border-line bg-paper/50 p-4"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-ink">
+                <span className="text-sm font-semibold text-fg">
                   {CHANNEL_LABELS[name] ?? name}
                 </span>
                 <StatusBadge status={ch.status} />
               </div>
               {ch.text && (
-                <p className="whitespace-pre-wrap rounded-lg bg-white p-3 text-xs leading-relaxed text-slate-600 shadow-card">
+                <p className="whitespace-pre-wrap rounded-lg bg-surface p-3 text-xs leading-relaxed text-fg-muted shadow-card">
                   {ch.text}
                 </p>
               )}
               {ch.error && (
-                <p className="break-words text-xs text-red-600">{ch.error.slice(0, 300)}</p>
+                <p className="break-words text-xs text-red-300">{ch.error.slice(0, 300)}</p>
               )}
               <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                 {ch.url && (
@@ -127,7 +127,7 @@ export default async function PostDetailPage({
         <Card key={lang} title={`${t('localization')} — ${lang.toUpperCase()}`}>
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-base font-bold text-ink">{loc.title}</span>
+              <span className="text-base font-bold text-fg">{loc.title}</span>
               {loc.url && (
                 <a
                   href={loc.url}

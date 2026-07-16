@@ -5,7 +5,7 @@ import { savePromptTemplate } from '@/lib/actions';
 import { getPromptTemplate } from '@/lib/data';
 
 const areaCls =
-  'mt-1 w-full rounded-lg border border-line bg-white p-3 font-mono text-xs leading-relaxed text-ink shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+  'mt-1 w-full rounded-lg border border-line bg-surface-2 p-3 font-mono text-xs leading-relaxed text-fg shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25';
 
 export default async function PromptEditPage({
   params,
@@ -45,7 +45,7 @@ export default async function PromptEditPage({
               defaultValue={(tpl?.focusKeywords ?? []).join(', ')}
               placeholder="AI, semiconductors, monetary policy"
             />
-            <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
+            <span className="mt-1.5 block text-xs leading-relaxed text-fg-muted">
               {t('focusKeywordsHint')}
             </span>
           </label>
@@ -57,7 +57,7 @@ export default async function PromptEditPage({
               className={`${inputCls} resize-y leading-relaxed`}
               defaultValue={tpl?.customInstructions ?? ''}
             />
-            <span className="mt-1.5 block text-xs leading-relaxed text-slate-500">
+            <span className="mt-1.5 block text-xs leading-relaxed text-fg-muted">
               {t('customInstructionsHint')}
             </span>
           </label>
@@ -91,7 +91,7 @@ export default async function PromptEditPage({
               <input name="modelOverride" className={inputCls}
                 defaultValue={tpl?.modelOverride ?? ''} />
             </label>
-            <label className="flex items-center gap-2 pt-5 text-sm text-slate-600">
+            <label className="flex items-center gap-2 pt-5 text-sm text-fg-muted">
               <input
                 name="enabled"
                 type="checkbox"

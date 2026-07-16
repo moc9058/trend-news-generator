@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ChatView } from '@/components/chat/ChatView';
-import { chatLabels } from '@/components/chat/labels';
+import { chatLabels, threadListLabels } from '@/components/chat/labels';
 import { ThreadList } from '@/components/chat/ThreadList';
 import { Card, PageHeader } from '@/components/ui';
 import { getCategories, getChatMessages, getChatThread, getChatThreads } from '@/lib/data';
@@ -18,8 +18,9 @@ export default async function ChatThreadPage({
   ]);
   if (!thread) notFound();
 
-  const [labels, threads, messages, categories] = await Promise.all([
+  const [labels, threadLabels, threads, messages, categories] = await Promise.all([
     chatLabels(locale),
+    threadListLabels(locale),
     getChatThreads(),
     getChatMessages(id),
     getCategories(),
@@ -35,12 +36,7 @@ export default async function ChatThreadPage({
       />
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside>
-          <ThreadList
-            threads={threads}
-            activeId={id}
-            locale={locale}
-            labels={{ newChat: t('newChat'), noThreads: t('noThreads'), untitled: t('untitled') }}
-          />
+          <ThreadList threads={threads} activeId={id} locale={locale} labels={threadLabels} />
         </aside>
         <Card>
           <div className="flex min-h-[60vh] flex-col">

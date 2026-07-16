@@ -20,7 +20,7 @@ export async function ResearchTrace({ runId }: { runId: string }) {
       actions={
         trace.url ? (
           <a href={trace.url} target="_blank" rel="noreferrer"
-            className="inline-flex items-center rounded-lg border border-line bg-white px-3 py-1.5 text-xs font-medium text-accent shadow-card hover:bg-paper">
+            className="inline-flex items-center rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-medium text-accent shadow-card hover:bg-paper">
             {t('traceOpen')}
           </a>
         ) : undefined

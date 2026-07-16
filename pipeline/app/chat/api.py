@@ -34,6 +34,7 @@ from app.chat.schemas import (
     ChatMode,
     ChatSeedSource,
     ChatThread,
+    ChatThreadStatus,
     ChatTitle,
     ChatUsage,
 )
@@ -311,6 +312,46 @@ def _maybe_title(thread_id: str, first_question: str, ctx) -> None:
 @router.post("/threads/{thread_id}/cancel", status_code=202)
 def cancel_thread(thread_id: str) -> dict:
     if not chat_repo.request_cancel(thread_id):
+        raise HTTPException(404, "chat thread not found")
+    return {"ok": True}
+
+
+# --------------------------------------------------------------------------- #
+# Thread management: rename / archive / delete                                #
+# --------------------------------------------------------------------------- #
+# POST (not PATCH/DELETE) so the admin's ID-token `call()` helper — which only
+# issues POSTs — reaches them without a new client path.
+
+class ChatRenameRequest(BaseModel):
+    title: str
+
+
+@router.post("/threads/{thread_id}/rename")
+def rename_thread(thread_id: str, req: ChatRenameRequest) -> dict:
+    if not req.title.strip():
+        raise HTTPException(400, "title is required")
+    if not chat_repo.rename_thread(thread_id, req.title.strip()):
+        raise HTTPException(404, "chat thread not found")
+    return {"ok": True}
+
+
+@router.post("/threads/{thread_id}/archive")
+def archive_thread(thread_id: str) -> dict:
+    if not chat_repo.set_thread_status(thread_id, ChatThreadStatus.archived.value):
+        raise HTTPException(404, "chat thread not found")
+    return {"ok": True}
+
+
+@router.post("/threads/{thread_id}/unarchive")
+def unarchive_thread(thread_id: str) -> dict:
+    if not chat_repo.set_thread_status(thread_id, ChatThreadStatus.active.value):
+        raise HTTPException(404, "chat thread not found")
+    return {"ok": True}
+
+
+@router.post("/threads/{thread_id}/delete")
+def delete_thread(thread_id: str) -> dict:
+    if not chat_repo.delete_thread(thread_id):
         raise HTTPException(404, "chat thread not found")
     return {"ok": True}
 

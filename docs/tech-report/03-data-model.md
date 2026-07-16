@@ -257,6 +257,7 @@
 | `shortRequireApproval` | boolean | true なら短文も `draft`(下書き)で止める安全弁(既定 false = 自動投稿) | seed、admin 書 | short 生成(初期 status の分岐) |
 | `xAllowUrlOnShort` | boolean | 短文の X 投稿にも Notion URL を付けるか(既定 false。X は URL 付きだとリーチが下がる想定の運用判断) | seed、admin 書 | publish(`_publish_x()`) |
 | `attachImages` | boolean | X/Threads への画像添付を行うか(既定 true) | seed、admin 書 | short 生成(画像選択)、publish(`_load_image()` / 署名 URL 発行) |
+| `researchReviseEnabled` | boolean | false なら Research Agent の review フェーズが critic 監査に落ちても差し戻し(revise)せず常に `proceed`(既定 true = 最大1回まで差し戻し)。`research/phases/review.py::run()` が `state.critic_decision()` の `max_revisions` を 1/0 に切り替える | seed、admin 書 | Research Agent review フェーズ |
 | `globalChannels` | map<string, bool> | チャネル全体のキルスイッチ `{x, threads, notion}`(既定 `{x: false, threads: false, notion: true}`)。**生成時に channelConfigs の `enabled` と AND** される(`configs.channel_config()` が false のチャネルを強制無効化)。カテゴリ別設定を書き換えずに全カテゴリ一括でチャネルを止められる。ダッシュボードの自動化グリッドには true のチャネル列だけが表示される | seed、admin 書(設定ページ) | `configs.channel_config()`、admin 読 |
 
 **`settings/notion`** — 対応する Pydantic モデルは無く、`{ "databaseId": string }` だけの素のドキュメント。Notion publisher(`pipeline/app/publishers/notion.py` の `publish()`)が `configs.notion_database_id()` で読み、**空のままだと Notion 公開は RuntimeError で失敗する**(初期セットアップ後に admin の設定ページで入力する運用。手順は `docs/setup-credentials.md`)。

@@ -77,7 +77,7 @@ export function HandoffMenu({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className="text-xs font-medium text-slate-500 transition-colors hover:text-accent"
+          className="text-xs font-medium text-fg-muted transition-colors hover:text-accent"
           onClick={() => setOpen((v) => !v)}
         >
           {labels.handoff}
@@ -92,12 +92,12 @@ export function HandoffMenu({
           </Link>
         ))}
         {result && !result.ok && (
-          <span className="font-mono text-xs text-red-600">{result.detail.slice(0, 160)}</span>
+          <span className="font-mono text-xs text-red-400">{result.detail.slice(0, 160)}</span>
         )}
       </div>
 
       {open && (
-        <div className="mt-2 space-y-2 rounded-lg border border-line bg-paper/30 p-3">
+        <div className="mt-2 space-y-2 rounded-lg border border-line bg-surface-2/40 p-3">
           <div className="flex flex-wrap gap-1">
             {(
               [
@@ -114,7 +114,7 @@ export function HandoffMenu({
                 className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
                   format === value
                     ? 'bg-accent-soft text-accent ring-1 ring-inset ring-accent-line'
-                    : 'text-slate-500 hover:bg-white'
+                    : 'text-fg-muted hover:bg-surface-2'
                 }`}
               >
                 {label}
@@ -150,7 +150,7 @@ export function HandoffMenu({
             </label>
           )}
 
-          <p className="text-[11px] leading-relaxed text-slate-500">{labels.handoffNote}</p>
+          <p className="text-[11px] leading-relaxed text-fg-muted">{labels.handoffNote}</p>
 
           <div className="flex items-center gap-2">
             <button type="button" className={btnCls} onClick={submit} disabled={pending}>

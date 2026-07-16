@@ -2,19 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* "Midnight Indigo" — dark-only token ladder. Colours live here as CSS custom
+   properties (space-separated RGB channels, so Tailwind's <alpha-value> opacity
+   utilities keep working: bg-surface/60, border-line/40, …) and are mapped into
+   Tailwind theme colours in tailwind.config.ts. A light theme could be added
+   later by overriding these under a [data-theme] block; today the app is dark. */
+:root {
+  color-scheme: dark;
+
+  --bg: 10 12 24; /* #0A0C18 app canvas */
+  --surface: 18 22 49; /* #121631 cards / panels */
+  --surface-2: 26 31 68; /* #1A1F44 raised fills: inputs, code, hover, rails */
+  --surface-3: 34 42 85; /* #222A55 popovers / menus / dropdowns */
+  --border: 38 43 74; /* #262B4A hairline borders */
+  --border-strong: 51 58 99; /* #333A63 stronger dividers / input edges */
+  --fg: 230 232 245; /* #E6E8F5 primary text */
+  --fg-muted: 153 160 192; /* #99A0C0 secondary text */
+  --fg-faint: 107 112 153; /* #6B7099 faint text / icons */
+  --accent: 56 189 248; /* #38BDF8 sky cyan — the one accent */
+  --accent-hover: 125 211 252; /* #7DD3FC brighter cyan */
+  --accent-contrast: 5 10 25; /* #050A19 ink text on an accent fill */
+  --accent-soft: 15 33 57; /* #0F2139 selected / active fill (solid, cyan-tinted) */
+  --accent-line: 30 58 90; /* #1E3A5A cyan-tinted border for selected/enabled */
+}
+
 body {
-  @apply bg-paper text-slate-800 antialiased;
+  @apply bg-bg text-fg antialiased;
   font-feature-settings: 'tnum';
 }
 
 /* Native form controls pick up the accent (checkboxes, radios, progress). */
 input[type='checkbox'],
 input[type='radio'] {
-  accent-color: #0f766e;
+  accent-color: rgb(56 189 248);
 }
 
 ::selection {
-  background: #c7e0dc;
+  background: rgb(56 189 248 / 0.28);
+  color: rgb(230 232 245);
+}
+
+/* Slim, dark scrollbars so the chrome recedes on the dark canvas. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border-strong)) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--border-strong));
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--fg-faint));
+  background-clip: padding-box;
+}
+
+/* @xyflow/react (ResearchFlow) ships a light stylesheet; retint the parts that
+   aren't reachable through Tailwind classes so the flow graph reads on dark. */
+.react-flow__edge-path {
+  stroke: rgb(var(--border-strong));
+}
+.react-flow__edge.animated .react-flow__edge-path {
+  stroke: rgb(var(--accent));
+}
+.react-flow__edge-text {
+  fill: rgb(var(--fg-muted));
+}
+.react-flow__edge-textbg {
+  fill: rgb(var(--surface));
 }
 
 @media (prefers-reduced-motion: reduce) {

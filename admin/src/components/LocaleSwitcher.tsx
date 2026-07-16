@@ -31,7 +31,7 @@ export function LocaleSwitcher({ current, expanded }: { current: string; expande
           title={l.label}
           className={`flex-1 rounded-md px-2 py-1 font-mono text-[11px] font-semibold tracking-wide transition-colors ${
             l.code === current
-              ? 'bg-white text-ink shadow-card'
+              ? 'bg-surface-3 text-fg shadow-card'
               : 'text-ink-muted hover:text-white'
           }`}
         >

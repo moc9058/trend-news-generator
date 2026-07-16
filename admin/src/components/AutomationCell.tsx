@@ -25,7 +25,7 @@ export function AutomationCell({
 
   return (
     <div className="space-y-1.5">
-      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-600">
+      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-fg-muted">
         <input
           type="checkbox"
           name={`enabled_${id}`}
@@ -44,7 +44,7 @@ export function AutomationCell({
         {channels.map((ch) => (
           <label
             key={ch}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line bg-paper/60 px-1.5 py-0.5 text-[11px] text-slate-500 has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line bg-paper/60 px-1.5 py-0.5 text-[11px] text-fg-muted has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent"
           >
             <input
               type="checkbox"

@@ -98,6 +98,8 @@ export interface AppSettingsDoc {
   shortRequireApproval: boolean;
   xAllowUrlOnShort: boolean;
   attachImages: boolean;
+  /** Research Agent review-phase revise gate; off forces proceed even on a failed audit. */
+  researchReviseEnabled: boolean;
   /** Global channel switches ANDed with per-category channelConfigs by the pipeline. */
   globalChannels: Record<string, boolean>;
 }

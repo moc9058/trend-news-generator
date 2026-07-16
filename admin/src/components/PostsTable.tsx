@@ -56,8 +56,8 @@ export function PostsTable({
   return (
     <div>
       {checked.size > 0 && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-line bg-amber-50/70 px-5 py-2.5">
-          <span className="text-xs font-medium text-slate-600">
+        <div className="flex flex-wrap items-center gap-3 border-b border-line bg-amber-500/10 px-5 py-2.5">
+          <span className="text-xs font-medium text-fg-muted">
             {labels.selected.replace('{count}', String(checked.size))}
           </span>
           <button
@@ -73,7 +73,7 @@ export function PostsTable({
                 }
               });
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-red-600/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-40"
           >
             {pending ? (
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-60" />
@@ -82,7 +82,7 @@ export function PostsTable({
             )}
             {labels.deleteSelected}
           </button>
-          {error && <span className="font-mono text-xs text-red-600">{error.slice(0, 160)}</span>}
+          {error && <span className="font-mono text-xs text-red-300">{error.slice(0, 160)}</span>}
         </div>
       )}
       <div className="overflow-x-auto">
@@ -123,11 +123,11 @@ export function PostsTable({
                 <td className={`${tdCls} max-w-xs`}>
                   <Link
                     href={`/${locale}/posts/${p.id}`}
-                    className="block truncate text-[13px] font-medium text-ink underline-offset-2 hover:text-accent hover:underline"
+                    className="block truncate text-[13px] font-medium text-fg underline-offset-2 hover:text-accent hover:underline"
                   >
                     {p.title || p.id}
                   </Link>
-                  <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+                  <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[11px] text-fg-faint">
                     <Chip>{p.format}</Chip>
                     {p.categoryId}
                   </div>
@@ -136,7 +136,7 @@ export function PostsTable({
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {p.channels.map((ch) => (
                       <span key={ch.name} className="inline-flex items-center gap-1.5 text-xs">
-                        <span className="font-mono text-slate-500">{ch.name}</span>
+                        <span className="font-mono text-fg-muted">{ch.name}</span>
                         <StatusBadge status={ch.status} />
                         {ch.url && (
                           <a
@@ -153,10 +153,10 @@ export function PostsTable({
                     ))}
                   </div>
                 </td>
-                <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-slate-500`}>
+                <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-fg-muted`}>
                   {p.costUsd !== null ? `$${p.costUsd.toFixed(3)}` : '—'}
                 </td>
-                <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-slate-400`}>
+                <td className={`${tdCls} whitespace-nowrap font-mono text-xs text-fg-faint`}>
                   {p.createdAt.slice(0, 16).replace('T', ' ')}
                 </td>
               </tr>

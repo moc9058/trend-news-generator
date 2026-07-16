@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from app.config import get_settings
 from app.models import ChannelState, ChannelStatus, Format, LocalizedContent, Post, PostStatus
-from app.repo import posts
+from app.repo import configs, posts
 from app.repo import research as repo
 from app.research import llm, state
 from app.research.context import RunContext
@@ -36,8 +36,10 @@ def _lang_consistent(localized: dict) -> bool:
 
 def run(ctx: RunContext) -> None:
     _critic(ctx)
+    max_revisions = 1 if configs.app_settings().researchReviseEnabled else 0
     ctx.review_decision = (
-        state.critic_decision(ctx.audit, ctx.revisions) if ctx.audit else "proceed")
+        state.critic_decision(ctx.audit, ctx.revisions, max_revisions)
+        if ctx.audit else "proceed")
     if ctx.review_decision == "proceed":
         _handoff(ctx)
 

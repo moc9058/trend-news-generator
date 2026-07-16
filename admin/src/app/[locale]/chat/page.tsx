@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { ChatView } from '@/components/chat/ChatView';
-import { chatLabels } from '@/components/chat/labels';
+import { chatLabels, threadListLabels } from '@/components/chat/labels';
 import { ThreadList } from '@/components/chat/ThreadList';
 import { Card, PageHeader } from '@/components/ui';
 import { getCategories, getChatThreads } from '@/lib/data';
@@ -12,9 +12,10 @@ export default async function ChatPage({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
-  const [t, labels, threads, categories] = await Promise.all([
+  const [t, labels, threadLabels, threads, categories] = await Promise.all([
     getTranslations({ locale, namespace: 'chat' }),
     chatLabels(locale),
+    threadListLabels(locale),
     getChatThreads(),
     getCategories(),
   ]);
@@ -26,11 +27,7 @@ export default async function ChatPage({
           rest of admin uses (AppShell). */}
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside>
-          <ThreadList
-            threads={threads}
-            locale={locale}
-            labels={{ newChat: t('newChat'), noThreads: t('noThreads'), untitled: t('untitled') }}
-          />
+          <ThreadList threads={threads} locale={locale} labels={threadLabels} />
         </aside>
         <Card>
           <div className="flex min-h-[60vh] flex-col">

@@ -104,3 +104,25 @@ export async function chatHandoff(
   const resp = await call('/api/chat/handoff', body);
   return { ok: resp.ok, detail: await resp.text() };
 }
+
+export async function renameChatThread(
+  threadId: string,
+  title: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/chat/threads/${threadId}/rename`, { title });
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+export async function archiveChatThread(
+  threadId: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/chat/threads/${threadId}/archive`, {});
+  return { ok: resp.ok, detail: await resp.text() };
+}
+
+export async function deleteChatThread(
+  threadId: string,
+): Promise<{ ok: boolean; detail: string }> {
+  const resp = await call(`/api/chat/threads/${threadId}/delete`, {});
+  return { ok: resp.ok, detail: await resp.text() };
+}

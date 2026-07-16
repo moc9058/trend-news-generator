@@ -98,6 +98,7 @@ def main() -> None:
         "shortRequireApproval": False,
         "xAllowUrlOnShort": False,
         "attachImages": True,
+        "researchReviseEnabled": True,
     })
     created += _create_if_absent("settings", "notion", {"databaseId": ""})
     created += _create_if_absent("settings", "channelHealth", {})

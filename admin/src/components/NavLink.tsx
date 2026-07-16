@@ -42,7 +42,7 @@ export function NavLink({
       <Icon
         name={icon}
         size={16}
-        className={`shrink-0 ${active ? 'text-accent-line' : 'text-ink-faint group-hover:text-ink-muted'}`}
+        className={`shrink-0 ${active ? 'text-accent' : 'text-ink-faint group-hover:text-ink-muted'}`}
       />
       <span className={`truncate ${expanded ? 'block' : 'hidden lg:block'}`}>{label}</span>
     </Link>

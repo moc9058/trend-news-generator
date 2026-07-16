@@ -2,7 +2,7 @@
 
 > 対象コード時点: コミット c694140 + 本機能のコミット / 最終更新: 2026-07-15(新規)
 >
-> **状態: 実装済み(C1–C4、コード完了)** — 実コードは `pipeline/app/chat/`、`pipeline/app/repo/chat.py`、`admin/src/components/chat/`、`admin/src/app/[locale]/chat/`、`admin/src/app/api/chat/stream/route.ts`。計画書は [`docs/plans/research-chat.md`](../../plans/research-chat.md)。姉妹計画(Research Agent の LangGraph 移行)との調整は同計画書 §9。
+> **状態: 実装済み(C1–C4、コード完了)** — 実コードは `pipeline/app/chat/`、`pipeline/app/repo/chat.py`、`admin/src/components/chat/`、`admin/src/app/[locale]/chat/`、`admin/src/app/api/chat/stream/route.ts`。この文書が設計の一次資料(かつて別に置いていた計画書 `docs/plans/research-chat.md` は本文書へ統合のうえ削除)。姉妹の Research Agent の LangGraph 移行との調整は完了済み(doc 10 §8.2)。
 
 ---
 
@@ -32,7 +32,7 @@
 | 層 | ファイル | 役割 |
 |---|---|---|
 | pipeline | `app/chat/graph.py` | LangGraph StateGraph 本体(ノード・ガード・ルーティング) |
-| | `app/chat/api.py` | `/api/chat/*` 3エンドポイント(SSE / cancel / handoff) |
+| | `app/chat/api.py` | `/api/chat/*` エンドポイント群(SSE / cancel / handoff / rename / archive / unarchive / delete) |
 | | `app/chat/prompts.py` | 全プロンプト(英語)+ `PROMPT_VERSION` |
 | | `app/chat/schemas.py` | Firestore ドキュメント + LLM 出力スキーマ |
 | | `app/chat/stream_llm.py` | ストリーミング LLM 呼び出しの予算計上・監査 |
@@ -44,11 +44,12 @@
 | admin | `src/app/api/chat/stream/route.ts` | **本リポジトリ唯一の route handler**(SSE 中継) |
 | | `src/components/chat/TrustBand.tsx` | **signature = 信頼バンド**(§6.9)。スコアの表示上限 `SCORE_SCALE` の正 |
 | | `src/components/chat/Apparatus.tsx` | 番号付き出典リスト(見出し・コネクタ名・色バッジは意図的に無し) |
+| | `src/components/chat/PhaseRail.tsx` | ストリーミング中の6フェーズ・ステッパー(`status` イベントの connector/url/count を可視化) |
 | | `src/components/chat/*` | ChatView / Composer / HandoffMenu / ChatPanel / ThreadList / useChatStream |
 | | `src/components/Markdown.tsx` | `cite` prop で `[n]` を対話可能に(chat のみ。posts は従来経路) |
 | | `src/app/fonts/IBMPlexMono-*.woff2` | apparatus 用書体(ラテン3ウェイト 44KB、同梱) |
 | | `src/app/[locale]/chat/{page,[id]/page}.tsx` | 専用ページ |
-| tests | `pipeline/tests/chat/*` | グラフ・repo・SSE・handoff・seed・LLM 継ぎ目(計 84 tests) |
+| tests | `pipeline/tests/chat/*` | グラフ・repo(スレッド管理 rename/archive/delete 含む)・SSE・handoff・seed・LLM 継ぎ目 |
 
 ## 3. 全体フロー
 
@@ -112,9 +113,13 @@ mode=research : plan_queries → search → select → read ─┬─► synthes
 |---|---|---|
 | POST | `/api/chat/messages` | SSE(`meta`→`status`/`token`/`sources`→`usage`→`done`、異常時 `error`) |
 | POST | `/api/chat/threads/{id}/cancel` | 202 `{ok:true}` / 404 |
+| POST | `/api/chat/threads/{id}/rename` | 200 `{ok:true}` / 400 / 404(body `{title}`、≤80字にトリム) |
+| POST | `/api/chat/threads/{id}/archive` | 200 `{ok:true}` / 404(`status=archived`。`list_threads` は active のみ返すので一覧から消える) |
+| POST | `/api/chat/threads/{id}/unarchive` | 200 `{ok:true}` / 404 |
+| POST | `/api/chat/threads/{id}/delete` | 200 `{ok:true}` / 404(`messages` サブコレクションをバッチで先に消してからスレッド本体) |
 | POST | `/api/chat/handoff` | 200 `{ok, kind, refId}` / 400 / 404 / 409 |
 
-`POST /api/research/runs` の契約は**変更していない**(姉妹計画の互換性契約)。`seedContext` は handoff の内部作成経路のみで付く。
+`POST /api/research/runs` の契約は**変更していない**(姉妹計画の互換性契約)。`seedContext` は handoff の内部作成経路のみで付く。スレッド管理系(rename/archive/delete)を **PATCH/DELETE ではなく POST** にしているのは、admin の ID トークン付き `call()`(POST 専用)をそのまま使えるようにするため。スキーマは無変更(`title` と `status:active|archived` は既存)なのでデータ移行は不要。
 
 ### 4.4 データモデル(Firestore)
 
@@ -123,6 +128,13 @@ mode=research : plan_queries → search → select → read ─┬─► synthes
 - **`chatUsage/{YYYY-MM}`**: `{costUsd, messages}` — ダッシュボードのコストカードに当月分が加算される(`getCostSummary`)
 - **複合インデックス `chatThreads(status ASC, lastMessageAt DESC)` が必須**(`infra/firestore.indexes.json` #7 + `00-bootstrap.sh` の `create_index` の**両方**に定義。手動ミラー)。スレッド一覧が「等価条件+別フィールドの並べ替え」だから。§6.8 参照
 - **readings(本文抜粋)は永続しない**ため 1MiB 制限に余裕
+
+### 4.5 管理画面 UI(2026-07 改修: ストリーミング UX・履歴レール・ダークテーマ)
+
+- **ストリーミングの可視化**: 研究回答のヘッダ下に **PhaseRail**(planning→searching→selecting→reading→[gap_check は deep のみ]→synthesizing のステッパー)。`status` イベントが既に運ぶ connector/query/host/count をそのまま描く(**バックエンド無変更**)。本文末尾に点滅キャレット、出典は届いた瞬間に **TrustBand / Apparatus へドックイン**(framer-motion。`prefers-reduced-motion` は `AppShell` の `MotionConfig reducedMotion="user"` で尊重 — グローバル CSS ルールは framer の JS アニメを止めないため必須)。
+- **フラッシュのない確定**: 送信〜確定を通じて**ターン単位の安定キー**を使い、ライブノードと確定後ノードを React にとって同一要素にする(`ChatView` の `committed` ローカルリスト)。これで `router.refresh()` もサーバ往復もなく、新規スレッド・多ターンでもライブ表示が途切れない(スレッド id は `history.replaceState` で URL に反映)。`meta` の `assistantMessageId` を掴んで handoff の messageId に使う。
+- **履歴レール(`ThreadList`、client 化)**: 相対時刻・ターン数・コストを表示、Today/Yesterday/This week/Earlier でグルーピング、クライアント検索。各行のケバブから rename(インライン編集)/ archive / delete(確認付き)。開いているスレッドを削除したら `/chat` へ遷移。読み取りは従来どおりサーバ(§6.3)、変更は §4.3 の管理エンドポイントを叩く server action。
+- **ダークテーマ "Midnight Indigo"(admin 全体・ダーク専用)**: `globals.css` の `:root` に CSS 変数トークン(`--bg/--surface/--fg/--accent…`、accent=sky cyan `#38BDF8`、canvas=indigo midnight `#0A0C18`)、`tailwind.config.ts` で既存トークン(`line/paper/accent`)を CSS 変数へ張り替え+`bg/surface/fg` を新設。`ui.tsx` が主レバー。**本チャットに限らず admin 全体**に及ぶ改修(light テーマは廃止。トークン層があるので将来の再導入は容易)。
 
 ## 5. 関数リファレンス
 
@@ -135,6 +147,8 @@ mode=research : plan_queries → search → select → read ─┬─► synthes
 | `build_seed_block(seed_context)` | `research/prompts.py` | plan フェーズに「検証すべき先行作業」として注入 |
 | `append_message(thread_id, msg)` | `repo/chat.py` | トランザクションで `seq` を採番 |
 | `recent_history(thread_id, limit)` | `repo/chat.py` | seq DESC で引いて反転(§6.4) |
+| `rename_thread / set_thread_status` | `repo/chat.py` | タイトル更新(≤80字)/ archive・unarchive。存在しなければ False |
+| `delete_thread(thread_id)` | `repo/chat.py` | `messages` サブコレクションをバッチで先に消してからスレッド本体(Firestore は cascade しない) |
 
 ## 6. 難所解説
 

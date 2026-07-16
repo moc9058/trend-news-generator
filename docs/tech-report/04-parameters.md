@@ -248,6 +248,7 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | `shortRequireApproval` | `false` | 安全弁。`true` にすると短文投稿も自動公開されず下書き(draft)で止まり、管理画面での承認が必要になる(`generators/short.py`) |
 | `xAllowUrlOnShort` | `false` | 短文の X 投稿の末尾に Notion 公開URLを付けるかどうか(`publishers/base.py` の `_publish_x()`)。記事(article)のティーザーにはこの設定に関係なく必ず付く |
 | `attachImages` | `true` | 収集アイテム由来の画像(og:image)を X / Threads 投稿に添付するかどうか(生成時に `generators/short.py` が画像を選び、公開時に `publishers/base.py` が再確認する) |
+| `researchReviseEnabled` | `true` | Research Agent の review フェーズで critic 監査が不合格のとき write へ差し戻す(revise)かどうか。`false` にすると監査結果に関わらず常に `proceed`(そのまま handoff)する(`research/phases/review.py`) |
 | `globalChannels` | `{x: false, threads: false, notion: true}` | チャネル全体のキルスイッチ。生成時に `repo/configs.py` の `channel_config()` がカテゴリ別 `channelConfigs.enabled` と **AND** する(false のチャネルは全カテゴリで投稿されない)。管理画面の設定ページで切替 |
 
 このほか運用上効く Firestore 設定として、`settings/notion` の `databaseId`(Notion の投稿先データベース ID。空だと Notion への公開が `publishers/notion.py` の `publish()` で例外になる)、チャネルごとの言語・有効/無効(`channelConfigs`)、プロンプト本文とモデル上書き(`promptTemplates`)がある。これらの構造も [03-data-model.md](03-data-model.md) に譲る。

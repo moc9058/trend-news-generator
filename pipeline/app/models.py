@@ -212,6 +212,9 @@ class AppSettings(BaseModel):
     shortRequireApproval: bool = False
     xAllowUrlOnShort: bool = False
     attachImages: bool = True
+    # Research Agent review-phase revise gate. False forces the critic straight
+    # to "proceed" even on a failed audit — the draft still ships, unrevised.
+    researchReviseEnabled: bool = True
     # Global channel kill-switches, ANDed with per-category channelConfigs at
     # generation time. Defaults: Notion on, X/Threads off (cost control).
     globalChannels: dict[str, bool] = Field(

@@ -8,7 +8,7 @@ import { approveAndPublish, saveReportDraft } from '@/lib/actions';
 import { btnCls, btnSecondaryCls, inputCls, labelCls, StatusBadge } from './ui';
 
 const areaCls =
-  'mt-1 w-full rounded-lg border border-line bg-white p-3 font-mono text-xs leading-relaxed text-ink shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+  'mt-1 w-full rounded-lg border border-line bg-surface-2 p-3 font-mono text-xs leading-relaxed text-fg shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25';
 
 type Loc = { title: string; summary: string; body: string };
 
@@ -60,7 +60,7 @@ export function ReportDraftEditor({ post }: { post: Post }) {
             key={l}
             onClick={() => setLang(l)}
             className={`rounded-lg px-4 py-1.5 font-mono text-xs font-medium transition-colors ${
-              lang === l ? 'bg-white text-ink shadow-card' : 'text-slate-500 hover:text-ink'
+              lang === l ? 'bg-surface text-fg shadow-card' : 'text-fg-muted hover:text-fg'
             }`}
           >
             {l}
@@ -69,7 +69,7 @@ export function ReportDraftEditor({ post }: { post: Post }) {
       </div>
 
       <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
-        <div className="space-y-4 rounded-xl border border-line bg-white p-5 shadow-card">
+        <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
           <label className={labelCls}>
             {tc('title')}
             <input value={cur.title} onChange={(e) => setField('title', e.target.value)} className={inputCls} />
@@ -97,15 +97,15 @@ export function ReportDraftEditor({ post }: { post: Post }) {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-xl border border-line bg-white p-5 shadow-card">
-            <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">{cur.title}</h2>
-            <article className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+          <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+            <h2 className="mb-3 text-lg font-bold tracking-tight text-fg">{cur.title}</h2>
+            <article className="whitespace-pre-wrap text-sm leading-relaxed text-fg">
               {cur.body}
             </article>
           </div>
 
-          <div className="rounded-xl border border-line bg-white p-5 shadow-card">
-            <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+            <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-fg-faint">
               {t('publishTo')}
             </div>
             <div className="mb-4 flex flex-wrap gap-2">
@@ -116,7 +116,7 @@ export function ReportDraftEditor({ post }: { post: Post }) {
                   <label
                     key={name}
                     className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                      checked ? 'border-accent-line bg-accent-soft text-ink' : 'border-line bg-white text-slate-500'
+                      checked ? 'border-accent-line bg-accent-soft text-fg' : 'border-line bg-surface-2 text-fg-muted'
                     } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     <input
@@ -156,7 +156,7 @@ export function ReportDraftEditor({ post }: { post: Post }) {
             </button>
             {result && (
               <div className={`mt-3 rounded-lg px-3 py-2 font-mono text-xs ${
-                result.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                result.ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
                 {result.detail.slice(0, 400)}
               </div>
             )}

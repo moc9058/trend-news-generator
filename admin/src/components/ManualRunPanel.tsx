@@ -40,7 +40,7 @@ export function ManualRunPanel({
           return (
             <label
               key={ch}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line bg-paper/60 px-1.5 py-0.5 text-[11px] text-slate-500 has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-line bg-paper/60 px-1.5 py-0.5 text-[11px] text-fg-muted has-[:checked]:border-accent-line has-[:checked]:bg-accent-soft has-[:checked]:text-accent"
             >
               <input
                 type="checkbox"
@@ -57,7 +57,7 @@ export function ManualRunPanel({
           );
         })}
       </div>
-      <p className="text-xs text-slate-400">{hint}</p>
+      <p className="text-xs text-fg-faint">{hint}</p>
       <div className="flex flex-wrap gap-2.5">
         <ActionButton action={runShort} label={shortLabel} />
         <ActionButton action={runArticle} label={articleLabel} disabled={shortOnly} />

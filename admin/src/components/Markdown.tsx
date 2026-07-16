@@ -55,7 +55,7 @@ function renderInline(
           key={key++}
           type="button"
           className={`rounded-sm px-px align-baseline font-mono text-[0.82em] font-medium text-accent ${
-            on ? 'bg-accent-soft ring-2 ring-accent-soft' : ''
+            on ? 'bg-accent-soft ring-1 ring-accent-line' : ''
           } hover:bg-accent-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent`}
           onMouseEnter={() => cite?.onLit?.(n)}
           onMouseLeave={() => cite?.onLit?.(null)}
@@ -113,25 +113,25 @@ export function Markdown({ children, cite }: { children: string; cite?: CiteOpti
       blocks.push(<hr key={key++} className="border-line" />);
     } else if (stripped.startsWith('### ')) {
       blocks.push(
-        <h3 key={key++} className="text-base font-bold text-ink">
+        <h3 key={key++} className="text-base font-bold text-fg">
           {ri(stripped.slice(4))}
         </h3>,
       );
     } else if (stripped.startsWith('## ')) {
       blocks.push(
-        <h2 key={key++} className="mt-2 border-b border-line pb-1.5 text-lg font-bold text-ink">
+        <h2 key={key++} className="mt-2 border-b border-line pb-1.5 text-lg font-bold text-fg">
           {ri(stripped.slice(3))}
         </h2>,
       );
     } else if (stripped.startsWith('# ')) {
       blocks.push(
-        <h1 key={key++} className="text-xl font-bold text-ink">
+        <h1 key={key++} className="text-xl font-bold text-fg">
           {ri(stripped.slice(2))}
         </h1>,
       );
     } else if (stripped.startsWith('> ')) {
       blocks.push(
-        <blockquote key={key++} className="border-l-2 border-accent/50 pl-3 text-slate-500">
+        <blockquote key={key++} className="border-l-2 border-accent/50 pl-3 text-fg-muted">
           {ri(stripped.slice(2))}
         </blockquote>,
       );
@@ -172,5 +172,5 @@ export function Markdown({ children, cite }: { children: string; cite?: CiteOpti
     }
     i += 1;
   }
-  return <div className="space-y-3 text-sm text-slate-700">{blocks}</div>;
+  return <div className="space-y-3 text-sm text-fg">{blocks}</div>;
 }

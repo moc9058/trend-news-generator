@@ -34,7 +34,7 @@ export default async function PromptsPage({
           <tbody>
             {categories.map((cat) => (
               <tr key={cat.slug} className="transition-colors hover:bg-paper/50">
-                <td className={`${tdCls} text-[13px] font-medium text-ink`}>{cat.name}</td>
+                <td className={`${tdCls} text-[13px] font-medium text-fg`}>{cat.name}</td>
                 {FORMATS.map((fmt) => {
                   const id = `${cat.slug}_${fmt}`;
                   const tpl = byId.get(id);
@@ -56,7 +56,7 @@ export default async function PromptsPage({
                       ) : (
                         <Link
                           href={`/${locale}/prompts/${id}`}
-                          className="text-xs text-slate-400 underline underline-offset-2 hover:text-accent"
+                          className="text-xs text-fg-faint underline underline-offset-2 hover:text-accent"
                         >
                           {t('notSeeded')}
                         </Link>

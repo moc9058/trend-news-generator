@@ -17,6 +17,7 @@ export type ChatStage =
 export interface StreamProgress {
   stage: ChatStage;
   connector?: string;
+  query?: string;
   url?: string;
   count?: number;
 }
@@ -28,12 +29,15 @@ export interface StreamState {
   progress: StreamProgress | null;
   error: string;
   threadId: string;
+  /** From the `meta` event — lets the view hand the live node off to the
+   *  authoritative server copy once Firestore has the finished message. */
+  assistantMessageId: string;
   costUsd: number | null;
 }
 
 const EMPTY: StreamState = {
   streaming: false, answer: '', sources: [], progress: null, error: '',
-  threadId: '', costUsd: null,
+  threadId: '', assistantMessageId: '', costUsd: null,
 };
 
 export interface SendArgs {
@@ -82,7 +86,8 @@ export function useChatStream(onThread?: (threadId: string) => void) {
       switch (event) {
         case 'meta': {
           const threadId = String(data.threadId ?? '');
-          setState((s) => ({ ...s, threadId }));
+          const assistantMessageId = String(data.assistantMessageId ?? '');
+          setState((s) => ({ ...s, threadId, assistantMessageId }));
           if (threadId) onThread?.(threadId);
           break;
         }

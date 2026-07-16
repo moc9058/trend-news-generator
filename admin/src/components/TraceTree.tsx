@@ -23,7 +23,7 @@ export function TraceTree({ spans, clipped }: { spans: TraceSpan[]; clipped: boo
   return (
     <div>
       {clipped && (
-        <div className="border-b border-line/60 px-5 py-2 text-xs text-amber-700">
+        <div className="border-b border-line/60 px-5 py-2 text-xs text-amber-300">
           {t('traceClipped', { count: spans.length })}
         </div>
       )}
@@ -45,12 +45,12 @@ export function TraceTree({ spans, clipped }: { spans: TraceSpan[]; clipped: boo
                 >
                   <Chip>{s.runType}</Chip>
                 </span>
-                <span className={`truncate ${s.error ? 'text-red-600' : 'text-ink'}`}>{s.name}</span>
-                {s.error && <span className="truncate text-xs text-red-500">{s.error}</span>}
-                <span className="ml-auto flex shrink-0 items-center gap-3 font-mono text-[11px] text-slate-400">
+                <span className={`truncate ${s.error ? 'text-red-300' : 'text-fg'}`}>{s.name}</span>
+                {s.error && <span className="truncate text-xs text-red-300">{s.error}</span>}
+                <span className="ml-auto flex shrink-0 items-center gap-3 font-mono text-[11px] text-fg-faint">
                   {(s.tokensIn > 0 || s.tokensOut > 0) && <span>{s.tokensIn}→{s.tokensOut}</span>}
                   {s.costUsd > 0 && <span>${s.costUsd.toFixed(3)}</span>}
-                  <span className="w-12 text-right text-slate-500">{duration(s.durationMs)}</span>
+                  <span className="w-12 text-right text-fg-muted">{duration(s.durationMs)}</span>
                 </span>
               </button>
 
@@ -59,7 +59,7 @@ export function TraceTree({ spans, clipped }: { spans: TraceSpan[]; clipped: boo
                   {s.inputs && <Payload label={t('traceInputs')} body={s.inputs} />}
                   {s.outputs && <Payload label={t('traceOutputs')} body={s.outputs} />}
                   <div className="flex items-center gap-3">
-                    {s.truncated && <span className="text-[11px] text-amber-700">{t('traceTruncated')}</span>}
+                    {s.truncated && <span className="text-[11px] text-amber-300">{t('traceTruncated')}</span>}
                     {s.url && (
                       <a href={s.url} target="_blank" rel="noreferrer"
                         className="text-[11px] font-medium text-accent underline-offset-2 hover:underline">
@@ -80,8 +80,8 @@ export function TraceTree({ spans, clipped }: { spans: TraceSpan[]; clipped: boo
 function Payload({ label, body }: { label: string; body: string }) {
   return (
     <div>
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</div>
-      <pre className="max-h-72 overflow-auto rounded-lg border border-line bg-white p-3 font-mono text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-fg-faint">{label}</div>
+      <pre className="max-h-72 overflow-auto rounded-lg border border-line bg-surface p-3 font-mono text-[11px] leading-relaxed text-fg whitespace-pre-wrap">
         {body}
       </pre>
     </div>

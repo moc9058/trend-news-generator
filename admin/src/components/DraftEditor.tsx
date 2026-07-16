@@ -9,20 +9,20 @@ import { THREADS_LIMIT, X_LIMIT, xWeightedLength } from '@/lib/textLimits';
 import { btnCls, btnSecondaryCls, inputCls, labelCls, StatusBadge } from './ui';
 
 const areaCls =
-  'mt-1 w-full rounded-lg border border-line bg-white p-3 font-mono text-xs leading-relaxed text-ink shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15';
+  'mt-1 w-full rounded-lg border border-line bg-surface-2 p-3 font-mono text-xs leading-relaxed text-fg shadow-card focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25';
 
 function LimitMeter({ count, limit }: { count: number; limit: number }) {
   const over = count > limit;
   const pct = Math.min(100, (count / limit) * 100);
   return (
     <span className="ml-auto inline-flex items-center gap-2">
-      <span className="h-1 w-16 overflow-hidden rounded-full bg-slate-200">
+      <span className="h-1 w-16 overflow-hidden rounded-full bg-surface-2">
         <span
           className={`block h-full rounded-full ${over ? 'bg-red-500' : 'bg-accent'}`}
           style={{ width: `${pct}%` }}
         />
       </span>
-      <span className={`font-mono text-[11px] ${over ? 'font-semibold text-red-600' : 'text-slate-400'}`}>
+      <span className={`font-mono text-[11px] ${over ? 'font-semibold text-red-300' : 'text-fg-faint'}`}>
         {count}/{limit}
       </span>
     </span>
@@ -64,7 +64,7 @@ export function DraftEditor({ post }: { post: Post }) {
   return (
     <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-2">
       {/* editor column */}
-      <div className="space-y-4 rounded-xl border border-line bg-white p-5 shadow-card">
+      <div className="space-y-4 rounded-xl border border-line bg-surface p-5 shadow-card">
         <label className={labelCls}>
           {tc('title')}
           <input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
@@ -81,7 +81,7 @@ export function DraftEditor({ post }: { post: Post }) {
         </label>
 
         <div className="space-y-3 border-t border-line pt-4">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-fg-faint">
             {t('channelTexts')}
           </div>
           <label className={labelCls}>
@@ -116,7 +116,7 @@ export function DraftEditor({ post }: { post: Post }) {
 
       {/* preview + publish column */}
       <div className="space-y-4">
-        <div className="overflow-hidden rounded-xl border border-line bg-white shadow-card">
+        <div className="overflow-hidden rounded-xl border border-line bg-surface shadow-card">
           <div className="flex gap-1 border-b border-line bg-paper/60 p-1.5">
             {(['notion', 'x', 'threads'] as const).map((name) => (
               <button
@@ -124,8 +124,8 @@ export function DraftEditor({ post }: { post: Post }) {
                 onClick={() => setTab(name)}
                 className={`flex-1 rounded-lg px-3 py-1.5 font-mono text-xs font-medium transition-colors ${
                   tab === name
-                    ? 'bg-white text-ink shadow-card'
-                    : 'text-slate-500 hover:text-ink'
+                    ? 'bg-surface text-fg shadow-card'
+                    : 'text-fg-muted hover:text-fg'
                 }`}
               >
                 {name}
@@ -134,8 +134,8 @@ export function DraftEditor({ post }: { post: Post }) {
           </div>
           <div className="min-h-64 p-5">
             {tab === 'notion' && (
-              <article className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
-                <h2 className="mb-3 text-lg font-bold tracking-tight text-ink">{title}</h2>
+              <article className="whitespace-pre-wrap text-sm leading-relaxed text-fg">
+                <h2 className="mb-3 text-lg font-bold tracking-tight text-fg">{title}</h2>
                 {body}
               </article>
             )}
@@ -144,13 +144,13 @@ export function DraftEditor({ post }: { post: Post }) {
                 <div className="mb-2.5 flex items-center gap-2.5">
                   <div className="h-8 w-8 rounded-full bg-ink" />
                   <div className="leading-tight">
-                    <div className="text-[13px] font-semibold text-ink">Trend News</div>
-                    <div className="font-mono text-[11px] text-slate-400">
+                    <div className="text-[13px] font-semibold text-fg">Trend News</div>
+                    <div className="font-mono text-[11px] text-fg-faint">
                       @trendnews · {tab}
                     </div>
                   </div>
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                <div className="whitespace-pre-wrap text-sm leading-relaxed text-fg">
                   {tab === 'x' ? xText : threadsText}
                 </div>
                 {post.format !== 'short' && (
@@ -161,8 +161,8 @@ export function DraftEditor({ post }: { post: Post }) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-line bg-white p-5 shadow-card">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-card">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-fg-faint">
             {t('publishTo')}
           </div>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -174,8 +174,8 @@ export function DraftEditor({ post }: { post: Post }) {
                   key={name}
                   className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
                     checked
-                      ? 'border-accent-line bg-accent-soft text-ink'
-                      : 'border-line bg-white text-slate-500'
+                      ? 'border-accent-line bg-accent-soft text-fg'
+                      : 'border-line bg-surface-2 text-fg-muted'
                   } ${locked ? 'cursor-not-allowed opacity-60' : ''}`}
                 >
                   <input
@@ -217,7 +217,7 @@ export function DraftEditor({ post }: { post: Post }) {
           {result && (
             <div
               className={`mt-3 rounded-lg px-3 py-2 font-mono text-xs ${
-                result.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                result.ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'
               }`}
             >
               {result.detail.slice(0, 400)}

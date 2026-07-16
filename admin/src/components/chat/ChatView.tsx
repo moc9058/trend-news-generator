@@ -3,21 +3,26 @@
 /** The chat surface, shared by the dashboard panel (`compact`) and /chat/[id].
  *
  * A research answer is NOT a chat bubble. It is a record: a head strip (kind,
- * trust band, cost), the prose, then the numbered apparatus. Sparring stays a
- * plain conversational block with neither band nor sources. The product's
- * central distinction — is this just talk, or is it backed by sources it
- * actually read? — is therefore structural, readable before a word is.
+ * trust band, cost), a live phase rail while it works, the prose, then the
+ * numbered apparatus. Sparring stays a plain conversational block with neither
+ * band nor sources. The product's central distinction — is this just talk, or
+ * is it backed by sources it actually read? — is therefore structural, readable
+ * before a word is.
  *
  * The order (evidence, then prose) follows the data: the SSE contract emits
  * `sources` before the first `token`, so the band is populated by the time the
  * answer starts writing and nothing reflows.
  *
  * Messages already persisted arrive as `initialMessages` from a server
- * component; the in-flight answer lives in `useChatStream` until it lands.
+ * component. A turn started in this session streams live and is then kept in a
+ * local `committed` list under a key that is stable for the whole turn — so the
+ * live node and its finished form are the same element to React (the hand-off
+ * neither flashes nor round-trips the server), and further turns work without a
+ * navigation (the thread id is adopted into the URL via history.replaceState).
  */
 
-import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Markdown } from '@/components/Markdown';
 import { EmptyState } from '@/components/ui';
 import { cancelChat } from '@/lib/actions';
@@ -25,6 +30,7 @@ import type { Category, ChatMessage, ChatSource } from '@/lib/types';
 import { Apparatus } from './Apparatus';
 import { Composer, type ComposerLabels } from './Composer';
 import { HandoffMenu, type HandoffLabels } from './HandoffMenu';
+import { PhaseRail } from './PhaseRail';
 import { TrustBand } from './TrustBand';
 import { useChatStream } from './useChatStream';
 
@@ -43,23 +49,36 @@ export interface ChatLabels extends ComposerLabels, HandoffLabels {
   statusSynthesizing: string;
 }
 
-const STAGE_KEY = {
-  planning: 'statusPlanning',
-  searching: 'statusSearching',
-  selecting: 'statusSelecting',
-  reading: 'statusReading',
-  gap_check: 'statusGapCheck',
-  synthesizing: 'statusSynthesizing',
-} as const;
+/** A soft, blinking caret trailing the prose while it streams. */
+function Caret() {
+  return (
+    <span
+      aria-hidden
+      className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[0.15em] animate-caret rounded-full bg-accent align-baseline"
+    />
+  );
+}
 
 /** What the user said. Quiet and set back — the question is context for the
  * answer, not a competing object. */
 function Turn({ children }: { children: React.ReactNode }) {
   return (
-    <p className="whitespace-pre-wrap border-l-2 border-line py-1 pl-3 text-sm text-slate-500">
+    <p className="whitespace-pre-wrap border-l-2 border-line py-1 pl-3 text-sm text-fg-muted">
       {children}
     </p>
   );
+}
+
+function ErrorCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+      {children}
+    </div>
+  );
+}
+
+function CancelledNote({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1.5 font-mono text-[10.5px] text-fg-faint">{children}</p>;
 }
 
 function Kind({ mode, depth, labels }: { mode: string; depth?: string | null; labels: ChatLabels }) {
@@ -75,7 +94,16 @@ function Kind({ mode, depth, labels }: { mode: string; depth?: string | null; la
 
 /** A research answer. */
 function Record({
-  mode, depth, labels, sources, pendingCount, costUsd, children, footer, status,
+  mode,
+  depth,
+  labels,
+  sources,
+  pendingCount,
+  costUsd,
+  rail,
+  streaming,
+  children,
+  footer,
 }: {
   mode: string;
   depth?: string | null;
@@ -83,13 +111,14 @@ function Record({
   sources: ChatSource[];
   pendingCount?: number;
   costUsd?: number | null;
+  rail?: React.ReactNode;
+  streaming?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  status?: React.ReactNode;
 }) {
   const [litN, setLitN] = useState<number | null>(null);
   return (
-    <article className="min-w-0 rounded-2xl border border-line bg-white px-4 py-3 shadow-card">
+    <article className="min-w-0 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line pb-2.5">
         <div className="flex flex-col gap-1.5">
           <Kind mode={mode} depth={depth} labels={labels} />
@@ -101,19 +130,18 @@ function Record({
             label={labels.sources}
           />
         </div>
-        <div className="flex items-center gap-3">
-          {status}
-          {typeof costUsd === 'number' && (
-            <span className="font-mono text-[10.5px] tabular-nums text-slate-400">
-              ${costUsd.toFixed(3)}
-            </span>
-          )}
-        </div>
+        {typeof costUsd === 'number' && (
+          <span className="font-mono text-[10.5px] tabular-nums text-fg-faint">
+            ${costUsd.toFixed(3)}
+          </span>
+        )}
       </div>
-      <div className="pt-3 text-sm leading-[1.9] text-ink">
+      {rail}
+      <div className="pt-3 text-sm leading-[1.9] text-fg">
         <MarkdownWithCites litN={litN} onLit={setLitN}>
           {children}
         </MarkdownWithCites>
+        {streaming && <Caret />}
       </div>
       <Apparatus sources={sources} litN={litN} onLit={setLitN} />
       {footer}
@@ -123,7 +151,9 @@ function Record({
 
 /** Bridges the cite handlers into Markdown only when the child is a string. */
 function MarkdownWithCites({
-  children, litN, onLit,
+  children,
+  litN,
+  onLit,
 }: {
   children: React.ReactNode;
   litN: number | null;
@@ -135,24 +165,40 @@ function MarkdownWithCites({
 
 /** A sparring answer: only talk. No band, no sources, no cost strip — the
  * absence is the information. */
-function Talk({ labels, children, footer }: {
+function Talk({
+  labels,
+  streaming,
+  children,
+  footer,
+}: {
   labels: ChatLabels;
+  streaming?: boolean;
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-line bg-white px-4 py-3 shadow-card">
-      <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-[0.12em] text-slate-400">
+    <div className="min-w-0 rounded-2xl border border-line bg-surface px-4 py-3 shadow-card">
+      <span className="mb-1.5 block font-mono text-[10.5px] uppercase tracking-[0.12em] text-fg-faint">
         {labels.modeChat}
       </span>
-      <div className="text-sm leading-[1.9] text-ink">{children}</div>
+      <div className="text-sm leading-[1.9] text-fg">
+        {children}
+        {streaming && <Caret />}
+      </div>
       {footer}
     </div>
   );
 }
 
+type Committed = { key: string; msg: ChatMessage };
+
 export function ChatView({
-  threadId, initialMessages, labels, categories, compact, locale,
+  threadId,
+  initialMessages,
+  labels,
+  categories,
+  compact,
+  locale,
 }: {
   threadId?: string;
   initialMessages: ChatMessage[];
@@ -161,159 +207,241 @@ export function ChatView({
   compact?: boolean;
   locale: string;
 }) {
-  const router = useRouter();
-  const [, startTransition] = useTransition();
   const [currentThread, setCurrentThread] = useState(threadId ?? '');
-  const { state, send, detach } = useChatStream();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const { state, send, detach, reset } = useChatStream();
 
-  // Locally-echoed user turns, so the question appears the instant it is sent
-  // rather than after the server round-trip.
+  // Turns finished in this session, kept under a key that is stable for the
+  // whole turn (see file header). Server-persisted turns stay in initialMessages.
+  const [committed, setCommitted] = useState<Committed[]>([]);
+  // The locally-echoed user turn, shown the instant it is sent.
   const [pending, setPending] = useState<{ content: string; mode: string; depth: string } | null>(
     null,
   );
+  const [turnKey, setTurnKey] = useState('');
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [state.answer, state.progress, pending]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const stickRef = useRef(true);
+  const turnCount = useRef(0);
+  const cancelRef = useRef(false);
+  const committedRef = useRef(false);
 
-  // A finished answer is authoritative in Firestore; re-render from the server.
-  const settled = !state.streaming && !!state.answer && !state.error;
-  useEffect(() => {
-    if (!settled) return;
-    const id = setTimeout(() => {
-      setPending(null);
-      startTransition(() => router.refresh());
-    }, 400);
-    return () => clearTimeout(id);
-  }, [settled, router]);
-
-  const onSend = (args: { content: string; mode: string; depth: string }) => {
-    setPending(args);
-    void send({ ...args, threadId: currentThread || undefined }).then(() => undefined);
+  // Stick to the bottom only when the reader is already near it, so a scroll up
+  // to re-read is not yanked back down mid-stream.
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (el) stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
   };
+  useEffect(() => {
+    if (stickRef.current) bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [state.answer, state.progress, committed.length, pending]);
 
-  // A brand-new thread gets its id from the `meta` event; adopt it so the next
-  // message continues the same conversation (and the URL matches).
+  // When the stream ends (done / error / abort), fold the finished turn into the
+  // local committed list under the same turn key, then clear the transient state.
+  // Same key + same position ⇒ React reuses the DOM: no flash, no server refresh.
+  useEffect(() => {
+    if (state.streaming) {
+      committedRef.current = false;
+      return;
+    }
+    if (committedRef.current || (!state.answer && !state.error)) return;
+    committedRef.current = true;
+
+    const status = state.error ? 'error' : cancelRef.current ? 'cancelled' : 'complete';
+    const assistant: ChatMessage = {
+      id: state.assistantMessageId || `${turnKey}-a`,
+      seq: 0,
+      role: 'assistant',
+      mode: pending?.mode ?? 'chat',
+      depth: pending?.depth ?? null,
+      content: state.answer,
+      status,
+      sources: state.sources,
+      usage:
+        typeof state.costUsd === 'number'
+          ? { costUsd: state.costUsd, promptTokens: 0, completionTokens: 0 }
+          : null,
+      handoffs: [],
+      error: state.error || '',
+    };
+    const user: ChatMessage = {
+      id: `${turnKey}-u`,
+      seq: 0,
+      role: 'user',
+      mode: pending?.mode ?? 'chat',
+      depth: pending?.depth ?? null,
+      content: pending?.content ?? '',
+      status: 'complete',
+    };
+    setCommitted((c) => [
+      ...c,
+      { key: `${turnKey}-u`, msg: user },
+      { key: `${turnKey}-a`, msg: assistant },
+    ]);
+    setPending(null);
+    cancelRef.current = false;
+    reset();
+  }, [
+    state.streaming,
+    state.answer,
+    state.error,
+    state.sources,
+    state.costUsd,
+    state.assistantMessageId,
+    pending,
+    turnKey,
+    reset,
+  ]);
+
+  // A brand-new thread gets its id from the `meta` event; adopt it and reflect
+  // it in the URL without a navigation, so the live stream keeps rendering.
   useEffect(() => {
     if (!state.threadId || state.threadId === currentThread) return;
     setCurrentThread(state.threadId);
-    if (!compact) router.replace(`/${locale}/chat/${state.threadId}`);
-  }, [state.threadId, currentThread, compact, locale, router]);
+    if (!compact && typeof window !== 'undefined') {
+      window.history.replaceState(null, '', `/${locale}/chat/${state.threadId}`);
+    }
+  }, [state.threadId, currentThread, compact, locale]);
 
-  const stageLabel = state.progress ? labels[STAGE_KEY[state.progress.stage]] : '';
-  const showEmpty = !initialMessages.length && !pending && !state.answer;
+  const onSend = (args: { content: string; mode: string; depth: string }) => {
+    const key = `turn-${(turnCount.current += 1)}`;
+    setTurnKey(key);
+    setPending(args);
+    stickRef.current = true;
+    void send({ ...args, threadId: currentThread || undefined }).then(() => undefined);
+  };
+
+  const renderMessage = useCallback(
+    (m: ChatMessage): React.ReactNode => {
+      if (m.role === 'user') return <Turn>{m.content}</Turn>;
+
+      const footer =
+        m.status === 'complete' && m.content ? (
+          <HandoffMenu
+            threadId={currentThread}
+            messageId={m.id}
+            categories={categories}
+            labels={labels}
+            locale={locale}
+            handoffs={m.handoffs ?? []}
+          />
+        ) : null;
+
+      if (m.status === 'error') {
+        return (
+          <ErrorCard>
+            {labels.error}: {m.error}
+          </ErrorCard>
+        );
+      }
+
+      const cancelled =
+        m.status === 'cancelled' ? <CancelledNote>{labels.cancelled}</CancelledNote> : null;
+
+      return m.mode === 'research' ? (
+        <Record
+          mode={m.mode}
+          depth={m.depth}
+          labels={labels}
+          sources={m.sources ?? []}
+          costUsd={m.usage?.costUsd ?? null}
+          footer={
+            <>
+              {cancelled}
+              {footer}
+            </>
+          }
+        >
+          {m.content}
+        </Record>
+      ) : (
+        <Talk
+          labels={labels}
+          footer={
+            <>
+              {cancelled}
+              {footer}
+            </>
+          }
+        >
+          <Markdown>{m.content}</Markdown>
+        </Talk>
+      );
+    },
+    [categories, currentThread, labels, locale],
+  );
+
   const liveResearch = pending?.mode === 'research';
+  const liveNode = state.error ? (
+    <ErrorCard>
+      {labels.error}: {state.error}
+    </ErrorCard>
+  ) : liveResearch ? (
+    <Record
+      mode="research"
+      depth={pending?.depth}
+      labels={labels}
+      sources={state.sources}
+      // Before grades land, the band shows one plain tick per source read so far
+      // — the progress indicator and the bibliography are the same object.
+      pendingCount={state.progress?.count ?? 0}
+      costUsd={state.costUsd}
+      streaming={state.streaming}
+      rail={
+        state.progress ? (
+          <PhaseRail progress={state.progress} labels={labels} deep={pending?.depth === 'deep'} />
+        ) : null
+      }
+    >
+      {state.answer}
+    </Record>
+  ) : (
+    <Talk labels={labels} streaming={state.streaming}>
+      <Markdown>{state.answer}</Markdown>
+      {state.streaming && !state.answer && (
+        <span className="ml-1 font-mono text-[10.5px] text-fg-faint">{labels.streaming}</span>
+      )}
+    </Talk>
+  );
 
-  const liveStatus = state.progress ? (
-    <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-slate-500">
-      <span className="h-2 w-2 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-      {stageLabel}
-    </span>
-  ) : null;
+  const messages = [...initialMessages, ...committed.map((c) => c.msg)];
+  const showPending = !!pending;
+  const showLive = state.streaming || !!state.answer || !!state.error;
+  const showEmpty = !messages.length && !showPending && !showLive;
+
+  const items: { key: string; node: React.ReactNode }[] = [
+    ...initialMessages.map((m) => ({ key: m.id, node: renderMessage(m) })),
+    ...committed.map((c) => ({ key: c.key, node: renderMessage(c.msg) })),
+  ];
+  if (showPending) items.push({ key: `${turnKey}-u`, node: <Turn>{pending!.content}</Turn> });
+  if (showLive) items.push({ key: `${turnKey}-a`, node: liveNode });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${compact ? 'max-h-80' : 'pr-1'}`}>
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        className={`flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto ${
+          compact ? 'max-h-80' : 'pr-1'
+        }`}
+      >
         {showEmpty && <EmptyState message={labels.empty} />}
 
-        {initialMessages.map((m) => {
-          if (m.role === 'user') return <Turn key={m.id}>{m.content}</Turn>;
-
-          const footer =
-            m.status === 'complete' && m.content ? (
-              <HandoffMenu
-                threadId={currentThread}
-                messageId={m.id}
-                categories={categories}
-                labels={labels}
-                locale={locale}
-                handoffs={m.handoffs ?? []}
-              />
-            ) : null;
-
-          if (m.status === 'error') {
-            return (
-              <div
-                key={m.id}
-                className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
-              >
-                {labels.error}: {m.error}
-              </div>
-            );
-          }
-
-          const cancelled =
-            m.status === 'cancelled' ? (
-              <p className="mt-1.5 font-mono text-[10.5px] text-slate-400">{labels.cancelled}</p>
-            ) : null;
-
-          return m.mode === 'research' ? (
-            <Record
-              key={m.id}
-              mode={m.mode}
-              depth={m.depth}
-              labels={labels}
-              sources={m.sources ?? []}
-              costUsd={m.usage?.costUsd ?? null}
-              footer={
-                <>
-                  {cancelled}
-                  {footer}
-                </>
-              }
+        <AnimatePresence initial={false} mode="popLayout">
+          {items.map((it) => (
+            <motion.div
+              key={it.key}
+              layout={it.key !== `${turnKey}-a`}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, transition: { duration: 0.12 } }}
+              transition={{ duration: 0.24, ease: 'easeOut' }}
             >
-              {m.content}
-            </Record>
-          ) : (
-            <Talk
-              key={m.id}
-              labels={labels}
-              footer={
-                <>
-                  {cancelled}
-                  {footer}
-                </>
-              }
-            >
-              <Markdown>{m.content}</Markdown>
-            </Talk>
-          );
-        })}
+              {it.node}
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
-        {pending && <Turn>{pending.content}</Turn>}
-
-        {(state.streaming || state.answer || state.error) && (
-          <>
-            {state.error ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {labels.error}: {state.error}
-              </div>
-            ) : liveResearch ? (
-              <Record
-                mode="research"
-                depth={pending?.depth}
-                labels={labels}
-                sources={state.sources}
-                // Before grades land, the band shows one plain tick per source
-                // read so far — the progress indicator and the bibliography are
-                // the same object.
-                pendingCount={state.progress?.count ?? 0}
-                costUsd={state.costUsd}
-                status={liveStatus}
-              >
-                {state.answer}
-              </Record>
-            ) : (
-              <Talk labels={labels}>
-                <Markdown>{state.answer}</Markdown>
-                {state.streaming && !state.answer && (
-                  <span className="font-mono text-[10.5px] text-slate-400">{labels.streaming}</span>
-                )}
-              </Talk>
-            )}
-          </>
-        )}
         <div ref={bottomRef} />
       </div>
 
@@ -324,6 +452,7 @@ export function ChatView({
         onCancel={() => {
           // Two halves: tell the server to stop the graph (it flags the thread,
           // and the run finalises itself as `cancelled`), and stop reading here.
+          cancelRef.current = true;
           if (currentThread) void cancelChat(currentThread);
           detach();
         }}
