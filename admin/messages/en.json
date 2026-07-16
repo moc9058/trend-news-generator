@@ -206,7 +206,17 @@
     "flowState_pending": "pending",
     "flowState_running": "running",
     "flowState_done": "done",
-    "flowState_error": "error"
+    "flowState_error": "error",
+    "trace": "LLM trace (LangSmith)",
+    "traceHint": "Per-call prompts, outputs, latency and nesting, read live from LangSmith. Not stored in Firestore.",
+    "traceLoading": "Loading trace…",
+    "noTrace": "No trace for this run",
+    "traceOpen": "Open in LangSmith",
+    "traceOpenSpan": "Open this span in LangSmith",
+    "traceInputs": "Input",
+    "traceOutputs": "Output",
+    "traceTruncated": "Payload truncated — open in LangSmith for the full text.",
+    "traceClipped": "Trace is large; showing the first {count} spans."
   },
   "categories": {
     "title": "Categories",

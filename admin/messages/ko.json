@@ -206,7 +206,17 @@
     "flowState_pending": "대기",
     "flowState_running": "실행 중",
     "flowState_done": "완료",
-    "flowState_error": "오류"
+    "flowState_error": "오류",
+    "trace": "LLM 트레이스 (LangSmith)",
+    "traceHint": "호출별 프롬프트·출력·지연 시간·중첩 구조를 LangSmith에서 직접 가져옵니다. Firestore에는 저장되지 않습니다.",
+    "traceLoading": "트레이스를 불러오는 중…",
+    "noTrace": "이 실행의 트레이스가 없습니다",
+    "traceOpen": "LangSmith에서 열기",
+    "traceOpenSpan": "이 스팬을 LangSmith에서 열기",
+    "traceInputs": "입력",
+    "traceOutputs": "출력",
+    "traceTruncated": "본문이 잘렸습니다 — 전문은 LangSmith에서 확인하세요.",
+    "traceClipped": "트레이스가 커서 처음 {count}개의 스팬만 표시합니다."
   },
   "categories": {
     "title": "카테고리",

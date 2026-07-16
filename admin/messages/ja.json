@@ -206,7 +206,17 @@
     "flowState_pending": "待機",
     "flowState_running": "実行中",
     "flowState_done": "完了",
-    "flowState_error": "エラー"
+    "flowState_error": "エラー",
+    "trace": "LLM トレース (LangSmith)",
+    "traceHint": "呼び出しごとのプロンプト・出力・レイテンシ・入れ子構造を LangSmith から直接取得。Firestore には保存されない。",
+    "traceLoading": "トレースを読み込み中…",
+    "noTrace": "この実行のトレースはありません",
+    "traceOpen": "LangSmith で開く",
+    "traceOpenSpan": "このスパンを LangSmith で開く",
+    "traceInputs": "入力",
+    "traceOutputs": "出力",
+    "traceTruncated": "本文は途中までです — 全文は LangSmith で確認してください。",
+    "traceClipped": "トレースが大きいため、先頭 {count} 件のスパンのみ表示しています。"
   },
   "categories": {
     "title": "カテゴリ",

@@ -130,6 +130,90 @@ def test_export_env_survives_a_poisoned_env_cache(monkeypatch):
     assert ls_utils.tracing_is_enabled() is True
 
 
+def test_init_tracing_enables_the_tracer_before_any_llm_call(monkeypatch):
+    """Regression: exporting the env lazily from ls_client() traced nothing at all.
+
+    `ls_client()` is first reached from inside the first LLM call — long after the
+    graph's root run would have had to open. langchain_core asks
+    `_tracing_v2_is_enabled()` the moment a runnable starts and attaches no tracer
+    when it is False, so a late export costs the whole tree: no root span, no node
+    spans, and the wrap_openai spans land as orphan `ChatOpenAI` roots carrying
+    none of `runner._config()`'s run_name/tags/metadata — nothing the admin trace
+    view can correlate back to a research run.
+
+    Confirmed against the real API before this existed: exporting before the invoke
+    produced `research:<id>` -> node_a -> node_b; exporting from inside the first
+    node produced no trace whatsoever.
+    """
+    from langchain_core.tracers.context import _tracing_v2_is_enabled
+    from langsmith import utils as ls_utils
+
+    from app.config import Settings
+
+    # Config resolved from .env only — Settings sees it, the process env does not.
+    for name in ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGCHAIN_TRACING_V2",
+                 "LANGSMITH_TRACING_V2"):
+        monkeypatch.delenv(name, raising=False)
+    ls_utils.get_env_var.cache_clear()
+    assert _tracing_v2_is_enabled() is False  # precondition: no tracer would attach
+
+    dotenv_settings = Settings(
+        langsmith_tracing=True,
+        langsmith_api_key="lsv2_pt_test_key",
+        langsmith_project="proj",
+        _env_file=None,
+    )
+    monkeypatch.setattr(observability, "get_settings", lambda: dotenv_settings)
+    observability.ls_client.cache_clear()
+
+    observability.init_tracing()
+
+    assert _tracing_v2_is_enabled() is True
+    # ...and it got there without building a client: the export must not be
+    # reachable only through ls_client(), which is what made it late.
+    assert observability.ls_client.cache_info().currsize == 0
+
+
+def test_init_tracing_noop_when_disabled():
+    """The autouse conftest fixture forces tracing off — nothing may leak out."""
+    assert observability.langsmith_enabled() is False
+    observability.init_tracing()
+    assert os.environ["LANGSMITH_API_KEY"] == ""
+    assert os.environ["LANGSMITH_TRACING"] == "false"
+
+
+def test_init_tracing_swallows_errors(monkeypatch):
+    """A tracing fault at startup must never stop the entrypoint booting."""
+    _enable(monkeypatch)
+
+    def _boom() -> None:
+        raise RuntimeError("env is on fire")
+
+    monkeypatch.setattr(observability, "_export_env", _boom)
+    observability.init_tracing()  # swallowed
+
+
+def test_generate_report_inits_tracing_before_running_anything(monkeypatch):
+    """Pin the ordering at the entrypoint, not just in the helper.
+
+    init_tracing() has to land before the first graph invoke; asserting it merely
+    gets called would still pass if it ran after the first run was claimed.
+    """
+    from app.jobs import generate_report
+
+    calls: list[str] = []
+    monkeypatch.setattr(generate_report.observability, "init_tracing",
+                        lambda: calls.append("init"))
+    monkeypatch.setattr(generate_report.observability, "flush_langsmith",
+                        lambda: calls.append("flush"))
+    monkeypatch.setattr(generate_report.repo, "claim_next",
+                        lambda worker: calls.append("claim") or None)
+
+    generate_report.main()
+
+    assert calls == ["init", "claim", "flush"]
+
+
 def test_flush_langsmith_noop_when_disabled():
     assert observability.langsmith_enabled() is False
     observability.flush_langsmith()  # must not raise, must not construct a client

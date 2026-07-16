@@ -7,6 +7,8 @@ source ./env.sh
 echo "--- build image via Cloud Build"
 gcloud builds submit ../pipeline --tag "$IMAGE" --region="$REGION"
 
+SECRETS=(openai-api-key gemini-api-key x-credentials threads-access-token \
+         threads-user-id notion-api-key)
 SECRET_ENV="OPENAI_API_KEY=openai-api-key:latest"
 SECRET_ENV+=",GEMINI_API_KEY=gemini-api-key:latest"
 SECRET_ENV+=",X_CREDENTIALS=x-credentials:latest"
@@ -15,11 +17,13 @@ SECRET_ENV+=",THREADS_USER_ID=threads-user-id:latest"
 SECRET_ENV+=",NOTION_API_KEY=notion-api-key:latest"
 if gcloud secrets describe ieee-api-key >/dev/null 2>&1; then
   SECRET_ENV+=",IEEE_API_KEY=ieee-api-key:latest"
+  SECRETS+=(ieee-api-key)
 fi
 # optional: Semantic Scholar key (research academic connector; falls back to
 # OpenAlex/Crossref without it).
 if gcloud secrets describe semantic-scholar-api-key >/dev/null 2>&1; then
   SECRET_ENV+=",SEMANTIC_SCHOLAR_API_KEY=semantic-scholar-api-key:latest"
+  SECRETS+=(semantic-scholar-api-key)
 fi
 
 COMMON_ENV="PROJECT_ID=${PROJECT_ID},REGION=${REGION},GCS_BUCKET=${BUCKET},PIPELINE_SERVICE_ACCOUNT=${PIPELINE_SA}"
@@ -30,7 +34,23 @@ COMMON_ENV="PROJECT_ID=${PROJECT_ID},REGION=${REGION},GCS_BUCKET=${BUCKET},PIPEL
 if gcloud secrets describe langsmith-api-key >/dev/null 2>&1; then
   SECRET_ENV+=",LANGSMITH_API_KEY=langsmith-api-key:latest"
   COMMON_ENV+=",LANGSMITH_TRACING=true,LANGSMITH_PROJECT=${PROJECT_ID}"
+  SECRETS+=(langsmith-api-key)
 fi
+
+# Grants live here, next to the mount, NOT in 01-secrets.sh: that script is
+# interactive and ./deploy.sh skips it by default, so a grant placed there never
+# runs on a routine deploy and the revision fails to start on a secret added
+# since the last hand-run of 01. Every add-iam-policy-binding is idempotent.
+echo "--- grant pipeline-sa read access to the mounted secrets"
+for s in "${SECRETS[@]}"; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:${PIPELINE_SA}" --role=roles/secretmanager.secretAccessor -q >/dev/null
+done
+# refresh-threads-token rotates the token in place: add a version, disable the old
+for role in secretVersionAdder secretVersionManager; do
+  gcloud secrets add-iam-policy-binding threads-access-token \
+    --member="serviceAccount:${PIPELINE_SA}" --role="roles/secretmanager.${role}" -q >/dev/null
+done
 
 echo "--- deploy pipeline-api (private service)"
 gcloud run deploy pipeline-api \

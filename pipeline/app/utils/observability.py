@@ -51,6 +51,32 @@ def _export_env() -> None:
         pass
 
 
+def init_tracing() -> None:
+    """Export the env *before* any traced work starts. Call once per entrypoint.
+
+    langchain_core decides whether to attach its tracer by reading os.environ when
+    a runnable starts, so the export has to happen before the graph is invoked.
+    Leaving it to `ls_client()` is too late: that is first reached from inside the
+    first LLM call, by which point the root run would already have had to open.
+
+    Exporting late does not degrade the trace, it deletes it — langchain_core
+    attaches no tracer at all, so no node span and no root span are ever emitted.
+    The `wrap_openai` spans still arrive (the SDK re-reads the env per call) but
+    as orphan roots named ChatOpenAI, carrying none of `_config()`'s run_name,
+    tags or metadata — so nothing can be correlated back to a research run.
+
+    Production sets the real env vars and never had the problem; only local runs
+    (LANGSMITH_* via pipeline/.env, which pydantic-settings keeps off os.environ)
+    did, which is exactly the divergence `_export_env` exists to close.
+    """
+    if not langsmith_enabled():
+        return
+    try:
+        _export_env()
+    except Exception as exc:  # noqa: BLE001 — tracing must not break the caller
+        log.warning("langsmith env export failed", extra={"fields": {"error": str(exc)}})
+
+
 @lru_cache
 def ls_client() -> Any | None:
     """The shared LangSmith client, or None when tracing is off/unavailable.

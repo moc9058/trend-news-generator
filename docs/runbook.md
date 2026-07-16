@@ -67,10 +67,12 @@
 - **コスト**: `chatUsage/{YYYY-MM}` に月次集計。ダッシュボードのコストカードに含まれる
 
 ### LangSmith（トレーシング）
-LLM 呼び出しの可視化のみを担う**任意の観測基盤**。UI は https://smith.langchain.com のプロジェクト `trend-news-generator`（1 LLM 呼び出し = 1トレース。モデル名・トークン数・レイテンシ・プロンプト/生成文の全文が見える）。
+LLM 呼び出しの可視化のみを担う**任意の観測基盤**。UI は https://smith.langchain.com のプロジェクト `trend-news-generator`（モデル名・トークン数・レイテンシ・プロンプト/生成文の全文が見える）。**レポート（Research Agent）だけは1 run = 1トレース**で、`research:{runId}` をルートに各ノードがぶら下がった木になる。短文・記事は LangGraph を通らないので従来どおり 1 LLM 呼び出し = 1トレース。
 
-- **障害の影響範囲はトレースの欠落だけ**。SDK はバックグラウンド送信で自身の例外を飲み込み、`utils/observability.py` も全例外を swallow + warn ログにするため、LangSmith が落ちても停止しても run は正常に完走する。「トレースが出ない」以外の症状が出たらそれは別の原因
-- **有効・無効の切り替え**: `langsmith-api-key` シークレットの有無が唯一のスイッチ。**止めたいとき** = `gcloud secrets delete langsmith-api-key`（または最新バージョンを disable）→ `./deploy.sh --skip-seed`。env は毎デプロイ全置換なので確実に消える。**戻すとき** = `./infra/01-secrets.sh` でキーを投入 → 再デプロイ
+- **管理画面からも見える**（2026-07-16〜）: レポート実行詳細（`/research/[id]`）の「LLM トレース」カードが LangSmith を読み戻して同じ木を描く。行を開くとプロンプト本文と生成結果が出る。**Firestore にはこの情報が無い**ので、カードが空＝LangSmith 側にトレースが無い、を意味する
+- **障害の影響範囲はトレースの欠落だけ**。SDK はバックグラウンド送信で自身の例外を飲み込み、`utils/observability.py` も全例外を swallow + warn ログにするため、LangSmith が落ちても停止しても run は正常に完走する。管理画面側も同様に握り潰してカードを消すだけ（500 にはならない）。「トレースが出ない」以外の症状が出たらそれは別の原因
+- **有効・無効の切り替え**: `langsmith-api-key` シークレットの有無が唯一のスイッチ。**止めたいとき** = `gcloud secrets delete langsmith-api-key`（または最新バージョンを disable）→ `./deploy.sh --skip-seed`。env は毎デプロイ全置換なので確実に消える。**戻すとき** = `./infra/01-secrets.sh` でキーを投入(値だけでよい。SA への読み取り権限は 10/11 が注入と同時に付ける)→ 再デプロイ。**pipeline と管理画面は同じスイッチで一緒に落ちる**（送信は止まったのに画面には出続ける、という状態は作れない）
+- **トレースが「孤児の ChatOpenAI」ばかりで `research:{runId}` の木が無いとき**: env のエクスポートがグラフ開始に間に合っていない（`observability.init_tracing()` がエントリポイントの先頭で呼ばれているか確認）。2026-07-16 以前のトレースは全てこの状態なので、**当時のレポート run は管理画面のトレースカードにも出ない**（runId で相関できないため）。設計は `docs/tech-report/05-detailed-design/10-research-agent.md` §6.8
 - **キーが無効・期限切れ**: warn ログ（`langsmith flush failed` / `langsmith client init failed`）が出るだけで run は完走する。急がず次のデプロイで差し替えてよい
 - **プライバシー**: プロンプト・生成文・収集記事の抜粋が**全文そのまま米国の SaaS へ送られる**（ユーザー承認済みの既定。エンドポイントは未設定 = US）。送信したくないデータを扱う場合は上記のキルスイッチで無効化すること
 - 無料枠は月 5,000 トレース / 保持14日。本システムの想定は短文 ~90 + 記事 ~4 + レポート 1 run/月 で枠の 5% 未満

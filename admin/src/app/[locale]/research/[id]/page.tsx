@@ -1,8 +1,10 @@
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ActionButton } from '@/components/ActionButton';
 import { ResearchFlow } from '@/components/ResearchFlow';
+import { ResearchTrace } from '@/components/ResearchTrace';
 import {
   Card, Chip, EmptyState, PageHeader, StatusBadge, Table, tdCls, thCls,
 } from '@/components/ui';
@@ -10,6 +12,7 @@ import { approveResearchPlan, cancelResearchRun } from '@/lib/actions';
 import {
   getResearchClaims, getResearchEvidence, getResearchEvents, getResearchRun,
 } from '@/lib/data';
+import { langsmithEnabled } from '@/lib/langsmith';
 
 const TERMINAL = new Set(['awaiting_review', 'completed', 'failed', 'cancelled', 'budget_exhausted']);
 
@@ -55,6 +58,12 @@ export default async function ResearchRunPage({
       <Card title={t('flow')} flush>
         <ResearchFlow run={run} events={events} />
       </Card>
+
+      {langsmithEnabled() && (
+        <Suspense fallback={<Card title={t('trace')}><EmptyState message={t('traceLoading')} /></Card>}>
+          <ResearchTrace runId={id} />
+        </Suspense>
+      )}
 
       {run.plan && (
         <Card title={t('plan')} hint={run.plan.contested ? t('contested') : undefined}>

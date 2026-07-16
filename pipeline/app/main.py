@@ -17,10 +17,14 @@ from app.publishers.base import delete_post_channels, publish_post
 from app.repo import posts
 from app.repo import research as research_repo
 from app.research.schemas import BudgetState, ResearchRun, ResearchRunStatus
+from app.utils import observability
 from app.utils.logging import get_logger
 
 log = get_logger(__name__)
 app = FastAPI(title="trend-news pipeline-api")
+# At import, before the chat graph can serve a request: langchain_core reads
+# os.environ when a runnable starts, so exporting later traces nothing.
+observability.init_tracing()
 app.include_router(chat_router)
 
 JOB_MODULES = {

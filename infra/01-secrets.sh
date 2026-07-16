@@ -33,16 +33,9 @@ create_or_update ieee-api-key     "IEEE Xplore API key" optional
 # deleting it and redeploying is the kill switch.
 create_or_update langsmith-api-key "LangSmith API key (lsv2_...)" optional
 
-echo "--- grant pipeline-sa access"
-for s in openai-api-key gemini-api-key x-credentials threads-access-token threads-user-id notion-api-key ieee-api-key langsmith-api-key; do
-  gcloud secrets describe "$s" >/dev/null 2>&1 || continue
-  gcloud secrets add-iam-policy-binding "$s" \
-    --member="serviceAccount:${PIPELINE_SA}" --role=roles/secretmanager.secretAccessor -q >/dev/null
-done
-# the refresh job rotates the threads token: needs versionAdder + version disable
-gcloud secrets add-iam-policy-binding threads-access-token \
-  --member="serviceAccount:${PIPELINE_SA}" --role=roles/secretmanager.secretVersionAdder -q >/dev/null
-gcloud secrets add-iam-policy-binding threads-access-token \
-  --member="serviceAccount:${PIPELINE_SA}" --role=roles/secretmanager.secretVersionManager -q >/dev/null
+# This script only sets VALUES. The IAM that lets a service account read a secret
+# lives next to the mount — pipeline-sa in 10-deploy-pipeline.sh, admin-sa (the
+# LangSmith key it reads traces back with) in 11-deploy-admin.sh. Grants here
+# would be invisible to a plain ./deploy.sh, which skips this interactive script.
 
 echo "secrets done. Next: ./10-deploy-pipeline.sh"

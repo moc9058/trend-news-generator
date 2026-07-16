@@ -646,6 +646,29 @@ researchRuns/{runId}/checkpoint_writes/{doc}/checkpoint_chunks/{i}
 - **serde の allowlist**: `JsonPlusSerializer(allowed_msgpack_modules=...)` に `research/schemas.py` の全 pydantic モデルを渡している。既定は「許可するが将来ブロックする」警告付きで、**厳格化されると未登録の型は例外ではなく `dict` として黙って復元される**(= resume したグラフが `ReportDraft` の代わりに dict を掴む)。`test_checkpointer_firestore.py::test_every_schema_model_survives_the_serde_allowlist` が漏れを検知する
 - **TTL**: 全ドキュメントに `expiresAt = now + research_checkpoint_ttl_days`(既定14日)を刻む。`infra/00-bootstrap.sh` が3つのコレクショングループ(`checkpoints` / `checkpoint_writes` / `checkpoint_chunks`)に TTL ポリシーを張る。成功 run は自分で消すので、TTL が効くのは失敗・cancel・承認待ちのまま放置された run
 
+### 6.8 LangSmith トレースと管理画面のトレース表示
+
+**何が Firestore に無く LangSmith にしか無いか**。`events`(§6.5)は「どのフェーズを何回・いくらで通ったか」を持つが、**呼び出しごとのプロンプト本文・生レスポンス・レイテンシ・入れ子構造は持たない**(`llm.py` はプロンプトを `generate_json` に渡して捨て、残すのは `detail.promptVersion` だけ。`AuditEvent.durationMs` は `phase_end` と `fetch` しか埋めない)。チェックポイント(§6.7)は全状態を持つが msgpack の不透明 blob で、成功時に削除される。したがって**トレースの正は LangSmith にしかない**。
+
+管理画面のレポート詳細ページは、その LangSmith を**読み戻して**トレース木を描く(`admin/src/lib/langsmith.ts` → `components/ResearchTrace.tsx` / `TraceTree.tsx`)。
+
+- 経路: `GET /sessions?name=<project>` でプロジェクト UUID を解決 → `POST /runs/query` に `filter=and(eq(metadata_key,"runId"), eq(metadata_value,<runId>))`, `is_root=true` でルート実行を引き、その `trace_id` で全スパンを取る。親子は `dotted_order`(`{時刻}{uuid}` をドット連結)の辞書順ソートで復元できる
+- **`langsmith` npm パッケージは使わず素の `fetch`**。Python 側が内部 ABI のせいで `langsmith<1` に pin されているのと同じ問題を admin に持ち込まないため。必要なのは読み取り2本だけ
+- **スイッチは pipeline と共通で「`langsmith-api-key` シークレットの有無」**。無ければ `11-deploy-admin.sh` が `--clear-secrets` で落とし、`langsmithEnabled()` が false になってカードごと消える(pipeline のトレーシング停止と同時に落ちる、が正しい挙動)
+- 失敗は全て `null` に潰す(トレーシング off・トレース未生成・LangSmith 不達を呼び出し側で区別しない)。**LangSmith の障害で管理画面が 500 になってはいけない**。third-party 往復なので Suspense 境界の内側に置き、Firestore 由来の各セクションを待たせない
+- プロンプト・生成文は無制限に大きいので、ブラウザへ送る前に 4000 字で切る(全文は「LangSmith で開く」リンク)
+
+#### 罠 — env は「置く」だけでなく「グラフが始まる前に」揃っていないと**トレースが1件も出ない**
+
+`utils/observability.py` の `_export_env()`(§04-parameters の SDK 直読の話)は、**呼ばれる時刻**まで含めて条件だった。これを `ls_client()` からの遅延呼び出しだけに任せると、`ls_client()` の初回到達は**最初の LLM 呼び出しの内側** — ルート実行が開くべき時刻より後になる。langchain_core はランナブル開始時に `_tracing_v2_is_enabled()`(= `os.environ` 直読)を見てトレーサーを付けるか決めるので、**遅いエクスポートはトレースを劣化させるのではなく消滅させる**:
+
+| エクスポートの時刻 | 出るもの |
+|---|---|
+| グラフ invoke より前 | `research:<runId>` → 各ノードの完全な木 |
+| グラフ開始後(旧実装のローカル経路) | **何も出ない**。`wrap_openai` のスパンだけが `ChatOpenAI` という孤児ルート(`ls_run_depth: 0`)として届き、`_config()` の run_name / tags / metadata を一切持たない = runId で相関できない |
+
+実 API に対して両方を再現して確認済み。**本番は Cloud Run が本物の env を渡すので発生しない** — 壊れるのはローカル(`.env` は pydantic-settings が `Settings` に読むだけで `os.environ` に入らない)だけで、しかも本番との差なので気付けない。`observability.init_tracing()` を各エントリポイントの先頭(`jobs/generate_report.py::main`、`app/main.py` の import 時)で呼んで潰している。`tests/research/test_observability.py::test_init_tracing_enables_the_tracer_before_any_llm_call` が固定。
+
 ## 7. エラー時の挙動
 
 ### 7.1 retry / fallback / timeout(全て `tenacity` + コード判定。LLM に任せない)
@@ -728,7 +751,7 @@ researchRuns/{runId}/checkpoint_writes/{doc}/checkpoint_chunks/{i}
 
 1. **resume の正しさ(実在した潜在バグ)**: 旧 Harness は「直前に完了したフェーズ」だけを永続化し、`draft`/`localized`/`selected` は**メモリ上のみ**に持っていた。そのため「revise 後の write でクラッシュ → 再開すると review が空の文脈で走り、citecheck が空の参照リストに対して満点(1.0)を返し、監査を通過して**本文が空の Post が作られる**」という経路が実在した。フェーズ境界より細かい粒度で「フェーズの入力そのもの」を永続化しなければ根治できず、それは実質チェックポインタの再発明になる。→ `tests/research/test_graph_golden.py::test_crash_after_write_resumes_review_with_draft` が回帰テストとして固定
 2. **フェーズ内の並列化**(M2 で実施): RQ×コネクタ、文書単位の抽出、言語単位のローカライズを扇形に広げたい。`Send` によるファンアウトを自前で書くと、実質 LangGraph の再実装になる
-3. **可視化**: LangSmith が env だけでグラフ実行を自動トレースする(§6.5・M0-a)
+3. **可視化**: LangSmith がグラフ実行を自動トレースする(§6.7・M0-a)。ただし「env を置くだけ」ではなく**env が揃うタイミング**まで含めて条件である(§6.7 の罠)
 
 **要するに**: 当時の判断は「LLM に制御を渡さない」ことが目的だった。LangGraph はその目的と両立し、かつ自前では高くつく永続化・並列化を持ってくる。決定性という当初の要件は、純関数ルーター+`Command` で**維持したまま**移行できた。
 

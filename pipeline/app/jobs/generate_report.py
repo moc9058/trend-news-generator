@@ -22,6 +22,9 @@ MAX_RUNS_PER_EXECUTION = 5  # drain a few queued runs; the scheduler re-triggers
 
 
 def main() -> None:
+    # Before the first graph invoke: langchain_core attaches its tracer by reading
+    # os.environ at that moment, so a later export yields no trace tree at all.
+    observability.init_tracing()
     worker_id = os.environ.get("CLOUD_RUN_EXECUTION", "local")
     processed = 0
     try:

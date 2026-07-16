@@ -112,6 +112,7 @@ flowchart TB
 
 - **LangSmith のトレーシングは「フラグ+キー」の両方が揃って初めて有効**(`utils/observability.py` の `langsmith_enabled()`)。本番では `infra/10-deploy-pipeline.sh` が `langsmith-api-key` シークレットの有無を見て3つ全部をまとめて注入するので、**シークレットを消して再デプロイすればキルスイッチ**になる(env は毎デプロイ全置換のため確実に消える)。ローカルで有効化したい場合のみ `pipeline/.env` に `LANGSMITH_TRACING=true` を書く。トレース送信が失敗しても run は落ちない(全例外を swallow)。
 - **`LANGSMITH_*` だけは「①→④の4層」の外にもう1つ読み手がいる**(この表の他の項目と違う点)。LangSmith SDK は `Settings` を経由せず `os.environ` を**直接**見てトレースの ON/OFF を判定する。ところが `.env` ファイルは pydantic-settings が `Settings` に読み込むだけで `os.environ` には反映されないため、**ローカルで `.env` にだけ書くと「アプリは有効だと思っているのに SDK は無効のまま=トレースが1件も出ない」という無言の食い違い**が起きる(本番は Cloud Run が本物の環境変数を渡すので発生しない)。このため `utils/observability.py` の `_export_env()` が、有効化時に解決済みの値を `os.environ` へ書き戻して両者を一致させている。SDK 側は env 読み取りを lru_cache するので、キャッシュのクリアも同関数が行う。
+- **さらに「いつ書き戻すか」も条件のうち**(値を揃えるだけでは足りない)。langchain_core はランナブル開始時に `os.environ` を読んでトレーサーを付けるか決めるので、**グラフが動き出した後のエクスポートは手遅れ**になり、トレースが劣化するのではなく**1件も出なくなる**(`wrap_openai` のスパンだけが親無しの `ChatOpenAI` として届く)。`_export_env()` を `ls_client()` 経由の遅延呼び出しに任せると初回到達が最初の LLM 呼び出しの内側になるため、`observability.init_tracing()` を各エントリポイントの先頭(`jobs/generate_report.py::main` と `app/main.py` の import 時)で明示的に呼んでいる。詳細と実測は [05-detailed-design/10-research-agent.md](05-detailed-design/10-research-agent.md) §6.8。
 - 関連する罠: SDK は `LANGSMITH_*` より**レガシーな `LANGCHAIN_*` 名前空間を優先**する。`LANGCHAIN_TRACING_V2=false` が環境にあると `LANGSMITH_TRACING=true` を無言で打ち消す(本システムは `LANGCHAIN_*` を設定しないので通常は無関係だが、トレースが出ない時の調査ポイント)。
 - **Research Chat(`chat_*` 10項目)は新規シークレット・新規 env var・新規 Cloud Run ジョブ/スケジューラのいずれも追加しない**。pipeline-api(既存の1サービス)にエンドポイントを増設するだけで、モデル呼び出しは既存の LangSmith 配線(§2 上記)と `research/llm.py` の予算計上経路をそのまま再利用する。詳細設計は [05-detailed-design/11-research-chat.md](05-detailed-design/11-research-chat.md)。
 - **`threads_app_secret` は未使用**。リポジトリ全体を検索した結果、参照は `pipeline/app/config.py` の宣言1箇所のみで、`.env.example` にも `infra/01-secrets.sh` にも登場しない。config.py のコメントは「トークン更新ジョブにのみ必要」と述べているが、実装(`publishers/threads.py` の `refresh_long_lived_token()`)は既存トークンだけで更新できる `th_refresh_token` 方式のため、アプリシークレットは不要になっている。コメントが実装より古い。
@@ -133,14 +134,15 @@ flowchart TB
 | `notion-api-key` | `ntn_` / `secret_` で始まるトークン | 必須 | job-generate-short、pipeline-api | なし |
 | `ieee-api-key` | IEEE Xplore API キー | **任意**(空でスキップ可) | job-collect / job-generate-report(ieee コネクタ) | なし |
 | `semantic-scholar-api-key` | Semantic Scholar API キー | **任意**(空なら OpenAlex/Crossref にフォールバック) | job-generate-report(academic コネクタ) | なし |
-| `langsmith-api-key` | `lsv2_` で始まる文字列 | **任意**(存在しなければトレーシングごと無効) | 全ジョブ / pipeline-api(OpenAI 呼び出しのトレース) | なし |
+| `langsmith-api-key` | `lsv2_` で始まる文字列 | **任意**(存在しなければトレーシングごと無効) | 全ジョブ / pipeline-api(OpenAI 呼び出しのトレース)+ **admin-ui**(レポート実行詳細のトレース表示。読み取りのみ) | なし |
 
 補足:
 
 - 注入は `infra/10-deploy-pipeline.sh` が pipeline-api と全6ジョブへ**一括で**行う(単一イメージのため、消費しないジョブにも同じセットが入る)。`ieee-api-key` / `semantic-scholar-api-key` / `langsmith-api-key` は「シークレットが存在する場合のみ注入」の条件付き。`langsmith-api-key` はさらに、存在するとき `--set-env-vars` 側にも `LANGSMITH_TRACING=true` と `LANGSMITH_PROJECT` を追加する(§2 補足)。
+- **`langsmith-api-key` は admin-ui にも注入される唯一のシークレット**(`infra/11-deploy-admin.sh` が同じ describe ゲートで判定。無ければ `--clear-secrets`)。admin 側は**読むだけ**なので `LANGSMITH_TRACING` は渡さず、`LANGSMITH_API_KEY` と `LANGSMITH_PROJECT` だけ。admin-sa への `secretAccessor` 付与も**同じ if の中**で `11-deploy-admin.sh` が行う(admin-sa が読める唯一のシークレット)。用途は [05-detailed-design/07-admin-ui.md](05-detailed-design/07-admin-ui.md) §6.9。
 - 参照は常に `:latest`(最新バージョン)。ジョブは実行開始時に解決するので、新バージョン追加後の**次回実行**から有効になる。
 - 「消費する」列は、pipeline-api の手動ジョブ実行機能(§4.1)を使うと pipeline-api がどのジョブの処理も代行できるため、厳密には pipeline-api はすべてのシークレットを消費し得る。表はコード上の主たる消費者を示す。
-- **`threads-access-token` だけ特別扱い**: job-refresh-threads-token が毎週、Meta の更新 API で新トークンを取得し、`jobs/refresh_threads_token.py` の `_rotate_secret()` が (1) 新バージョンを追加し (2) それ以外の有効バージョンをすべて無効化する。この自動更新のため、pipeline-sa にはこのシークレットに限り `secretVersionAdder`(バージョン追加)と `secretVersionManager`(無効化)の2ロールが追加付与されている(`infra/01-secrets.sh`)。他のシークレットは読み取り(`secretAccessor`)のみ。
+- **`threads-access-token` だけ特別扱い**: job-refresh-threads-token が毎週、Meta の更新 API で新トークンを取得し、`jobs/refresh_threads_token.py` の `_rotate_secret()` が (1) 新バージョンを追加し (2) それ以外の有効バージョンをすべて無効化する。この自動更新のため、pipeline-sa にはこのシークレットに限り `secretVersionAdder`(バージョン追加)と `secretVersionManager`(無効化)の2ロールが追加付与されている(`infra/10-deploy-pipeline.sh`)。他のシークレットは読み取り(`secretAccessor`)のみ。
 - 各値の発行方法 → [setup-credentials](../setup-credentials.md)。失効・漏えい時の対応 → [runbook](../runbook.md)。
 
 ## 4. Cloud Run 設定表
@@ -217,13 +219,14 @@ Cloud Run には**サービス**(HTTP リクエストを待ち受ける常駐型
 | pipeline-sa | `roles/datastore.user` | プロジェクト全体 | `infra/00-bootstrap.sh` | Firestore の読み書き |
 | pipeline-sa | `roles/storage.objectAdmin` | バケット `gs://trend-news-generator-media` | `infra/00-bootstrap.sh` | 収集画像の保存・取得 |
 | pipeline-sa | **`roles/iam.serviceAccountTokenCreator`** | **pipeline-sa 自身** | `infra/00-bootstrap.sh` | **GCS 署名URLの発行(下記)** |
-| pipeline-sa | `roles/secretmanager.secretAccessor` | 7シークレット個別 | `infra/01-secrets.sh` | シークレットの読み取り |
-| pipeline-sa | `roles/secretmanager.secretVersionAdder` | `threads-access-token` のみ | `infra/01-secrets.sh` | 新トークンのバージョン追加(§3) |
-| pipeline-sa | `roles/secretmanager.secretVersionManager` | `threads-access-token` のみ | `infra/01-secrets.sh` | 旧バージョンの無効化(§3) |
+| pipeline-sa | `roles/secretmanager.secretAccessor` | 注入するシークレット個別(必須6 + 存在する任意分) | `infra/10-deploy-pipeline.sh` | シークレットの読み取り |
+| pipeline-sa | `roles/secretmanager.secretVersionAdder` | `threads-access-token` のみ | `infra/10-deploy-pipeline.sh` | 新トークンのバージョン追加(§3) |
+| pipeline-sa | `roles/secretmanager.secretVersionManager` | `threads-access-token` のみ | `infra/10-deploy-pipeline.sh` | 旧バージョンの無効化(§3) |
 | pipeline-sa | `roles/run.invoker` | 6ジョブ個別 | `infra/10-deploy-pipeline.sh`(ジョブ作成ループ内) | 管理画面「今すぐ実行」で Cloud Run Job を起動([05-pipeline-api.md](05-detailed-design/05-pipeline-api.md) 6a) |
 | admin-sa | `roles/datastore.user` | プロジェクト全体 | `infra/00-bootstrap.sh` | 管理画面から Firestore を直接読み書き |
 | admin-sa | `roles/storage.objectViewer` | バケット | `infra/00-bootstrap.sh` | 画像の閲覧(読み取りのみ) |
 | admin-sa | `roles/run.invoker` | pipeline-api サービス | `infra/10-deploy-pipeline.sh` | 公開・リトライ・ジョブ起動 API の呼び出し |
+| admin-sa | `roles/secretmanager.secretAccessor` | `langsmith-api-key` のみ(存在する場合) | `infra/11-deploy-admin.sh` | トレース表示用のキー読み取り(admin-sa が読める唯一のシークレット。§3) |
 | scheduler-sa | `roles/run.invoker` | スケジュール対象の5ジョブ個別 | `infra/20-schedulers.sh` の `grant_invoker()` | 定期実行(job-seed は対象外) |
 | ユーザー moc9058@gmail.com | `roles/iap.httpsResourceAccessor` | admin-ui(IAP) | `infra/11-deploy-admin.sh` | 管理画面へのアクセス許可 |
 

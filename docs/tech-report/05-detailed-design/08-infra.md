@@ -1,6 +1,6 @@
 # インフラスクリプト詳細設計 — infra/ の gcloud スクリプト読解
 
-> 対象コード時点: コミット 6cdcccd + 未コミット変更(M0-a: LangSmith)/ 最終更新: 2026-07-15
+> 対象コード時点: コミット 35f05ef + 未コミット変更 / 最終更新: 2026-07-16(admin-ui への LangSmith キー注入と admin-sa への付与を §4.4・§6.2 に反映)
 
 ## 1. この文書で分かること
 
@@ -31,7 +31,7 @@ flowchart LR
 | `deploy.sh`(リポジトリ直下) | 00→01→10→seed→11→20 を 1 コマンドで通す一括デプロイ補助スクリプト(4.6 参照) |
 | `infra/env.sh` | 全スクリプトが読み込む共通変数(プロジェクト ID・リージョン・SA 名・ジョブ一覧) |
 | `infra/00-bootstrap.sh` | 一度きりの土台作り: API 有効化、Firestore、GCS、Artifact Registry、SA と IAM |
-| `infra/01-secrets.sh` | 対話式でシークレット 7 種を Secret Manager に登録し、pipeline-sa に読み取り権限を付与 |
+| `infra/01-secrets.sh` | 対話式でシークレット 7 種を Secret Manager に登録(**値だけ**。読み取り権限の付与は注入側の 10/11 が行う = 4.2) |
 | `infra/10-deploy-pipeline.sh` | pipeline イメージを Cloud Build でビルドし、pipeline-api(サービス)とジョブ 7 本をデプロイ |
 | `infra/11-deploy-admin.sh` | 管理画面(admin)イメージをビルドし、IAP 付きでデプロイ、管理者を許可 |
 | `infra/20-schedulers.sh` | Cloud Scheduler 6 本を作成し、ジョブを定時起動させる |
@@ -59,7 +59,7 @@ flowchart LR
 | `PIPELINE_SA` / `ADMIN_SA` / `SCHEDULER_SA` | `pipeline-sa@…` など 3 つ | サービスアカウント(後述)のメールアドレス形式の ID |
 | `JOBS` | `(collect generate-daily generate-weekly generate-monthly cleanup-drafts refresh-threads-token seed)` | デプロイするジョブ 7 本の名前の配列。10 のループと 8 章の変更手順の起点 |
 
-**サービスアカウント(SA)** とは「プログラムに持たせる Google アカウント」です。人間のアカウントと同様に権限(IAM ロール)を付与でき、本システムでは役割ごとに 3 つに分けています: パイプライン実行用の `pipeline-sa`、管理画面用の `admin-sa`、スケジューラ用の `scheduler-sa`。分ける理由は「それぞれに必要最小限の権限だけ与える」ためで、たとえば管理画面が乗っ取られてもシークレットは読めない、という守りになります。
+**サービスアカウント(SA)** とは「プログラムに持たせる Google アカウント」です。人間のアカウントと同様に権限(IAM ロール)を付与でき、本システムでは役割ごとに 3 つに分けています: パイプライン実行用の `pipeline-sa`、管理画面用の `admin-sa`、スケジューラ用の `scheduler-sa`。分ける理由は「それぞれに必要最小限の権限だけ与える」ためで、たとえば管理画面が乗っ取られても投稿用の認証情報(X・Threads・Notion)や OpenAI/Gemini のキーには一切届きません — `admin-sa` が読めるシークレットは**トレース閲覧用の `langsmith-api-key` 1 つだけ**です(§6.2)。
 
 ### 3.2 `set -euo pipefail` — 途中で失敗したら止まる
 
@@ -113,7 +113,7 @@ flowchart LR
 
 - `pipeline-sa` — プロジェクトに対する `roles/datastore.user`(Firestore の読み書き。名前が datastore なのは歴史的経緯)、バケットに対する `roles/storage.objectAdmin`(画像のアップロード・削除)。
 - **`pipeline-sa` の自己 `serviceAccountTokenCreator`(最重要)** — `gcloud iam service-accounts add-iam-policy-binding` で、pipeline-sa に「**pipeline-sa 自身**に対する `roles/iam.serviceAccountTokenCreator`」を付与しています。一見無意味に見えますが、これが**署名 URL の発行に必須**です。署名 URL とは「この URL を知っている人は非公開バケットのこのファイルを期限内だけ読める」という、暗号署名付きの URL です。署名には本来 SA の秘密鍵ファイルが必要ですが、Cloud Run 上には秘密鍵を置きません(漏えいリスクを避けるため)。代わりに IAM Credentials API の signBlob(①で有効化した `iamcredentials.googleapis.com`)へ「自分の名前で署名してほしい」と依頼する方式を使い、その依頼に必要な権限がまさに serviceAccountTokenCreator です。対象が自分自身なので「自己トークン作成者」と呼んでいます。**この 1 行を消すと画像添付が全滅する**ため、スクリプトにもその旨のコメントがあります。
-- `admin-sa` — プロジェクトに `roles/datastore.user`(管理画面は Firestore を直接読み書きするため)、バケットに `roles/storage.objectViewer`(画像のプレビュー表示は読み取りだけでよい)。書き込み権限を与えないのが最小権限の考え方です。
+- `admin-sa` — プロジェクトに `roles/datastore.user`(管理画面は Firestore を直接読み書きするため)、バケットに `roles/storage.objectViewer`(画像のプレビュー表示は読み取りだけでよい)。書き込み権限を与えないのが最小権限の考え方です。加えて `11-deploy-admin.sh` が **`langsmith-api-key` にだけ** `roles/secretmanager.secretAccessor` を付けます(存在する場合のみ。トレース閲覧用 = §6.2)。シークレットは1つずつ付与するので、他のキーには波及しません。
 
 なお IAM 付与コマンドに付いている `--condition=None` は「条件なしの付与」を明示する指定(条件付き IAM が混在するプロジェクトで対話プロンプトが出るのを防ぐ)、`-q` は確認プロンプトを省略、`>/dev/null` は成功時に表示される長大なポリシー全文を捨てて画面を静かにするためのものです。
 
@@ -121,7 +121,7 @@ flowchart LR
 
 ### 4.2 01-secrets.sh — シークレットの対話式登録
 
-**目的**: API キーやトークンを Secret Manager(値を暗号化保管し、読み取りを IAM で制御する金庫)に登録し、pipeline-sa だけが読めるようにする。値の入手方法は [../../setup-credentials.md](../../setup-credentials.md) が前提資料です。
+**目的**: API キーやトークンを Secret Manager(値を暗号化保管し、読み取りを IAM で制御する金庫)に登録する。**このスクリプトが扱うのは値だけ**で、誰が読めるかの IAM は注入側(10/11)の担当です(下記「権限付与がここに無い理由」)。値の入手方法は [../../setup-credentials.md](../../setup-credentials.md) が前提資料です。
 
 **create_or_update 関数の仕組み** — 中核はこの関数です。`read -r -p "プロンプト: " value` でターミナルに質問を表示して入力を受け取り(`-r` はバックスラッシュをそのまま扱う指定)、次のように分岐します。
 
@@ -133,9 +133,9 @@ flowchart LR
 
 **登録される 7 シークレット**: `openai-api-key` / `gemini-api-key` / `x-credentials`(X の OAuth 1.0a 認証情報 4 点を 1 行 JSON で) / `threads-access-token` / `threads-user-id` / `notion-api-key` / `ieee-api-key`(任意)。
 
-**権限付与** — 後半の for ループで 7 つ全てに対し pipeline-sa へ `roles/secretmanager.secretAccessor`(値の読み取り)を付与します。ループ先頭の `gcloud secrets describe "$s" >/dev/null 2>&1 || continue` は「存在しないシークレット(スキップされた ieee-api-key)は権限付与も飛ばす」ための行です。
+**権限付与がここに無い理由(2026-07-16 に移動)** — 「誰がこのシークレットを読めるか」の IAM は、**シークレットをマウントする側**、つまり `10-deploy-pipeline.sh`(pipeline-sa)と `11-deploy-admin.sh`(admin-sa の `langsmith-api-key`)に置いています。かつては本スクリプトの後半にありましたが、**このスクリプトは対話式なので `deploy.sh` が既定でスキップする**(4.6)。すると「`deploy.sh` はシークレットを新しくマウントするのに、それを読む権限は一度も付与しない」という組み合わせが成立してしまい、Cloud Run が `Permission denied on secret: …` でリビジョンを起動できずデプロイが落ちます(実際に `langsmith-api-key` × admin-sa で発生)。付与をマウントの隣に置けば、**マウントを増やした人が権限も必ず一緒に持ち込む**ので、この食い違いが構造的に起きません。`add-iam-policy-binding` は冪等なので毎デプロイ実行しても害はありません。
 
-**threads-access-token だけ追加権限が付く理由** — Threads のトークンは約 60 日で失効するため、`job-refresh-threads-token`(毎週実行)が**プログラムから**新しいトークンを Secret Manager に書き戻します。つまり pipeline-sa はこのシークレットに限り「読む」だけでなく「書く」必要があり、`roles/secretmanager.secretVersionAdder`(新バージョンの追加)と `roles/secretmanager.secretVersionManager`(古いバージョンの無効化などの管理)を追加付与しています。他の 6 つは人間が更新するので読み取り専用のままです。
+**threads-access-token だけ追加権限が付く理由** — Threads のトークンは約 60 日で失効するため、`job-refresh-threads-token`(毎週実行)が**プログラムから**新しいトークンを Secret Manager に書き戻します。つまり pipeline-sa はこのシークレットに限り「読む」だけでなく「書く」必要があり、`roles/secretmanager.secretVersionAdder`(新バージョンの追加)と `roles/secretmanager.secretVersionManager`(古いバージョンの無効化などの管理)を追加付与しています(これも `10-deploy-pipeline.sh`)。他の 6 つは人間が更新するので読み取り専用のままです。
 
 **再実行**: 安全(既存シークレットには新バージョンが積まれるだけ)。ただし対話式のため**必須シークレット全部の再入力を要求される**点に注意。1 つだけ更新したいときは、[../../runbook.md](../../runbook.md) の Threads トークン節にあるように `gcloud secrets versions add <name> --data-file=-` を直接叩く方が実用的です。
 
@@ -174,7 +174,7 @@ flowchart LR
 
 **② イメージビルド** — `gcloud builds submit ../admin --tag "$ADMIN_IMAGE"`。pipeline と同じ仕組みで、`admin/Dockerfile`(2 ステージビルド、5 章)を使います。イメージは同じ Artifact Registry リポジトリに `admin:latest` として置かれます。
 
-**③ IAP 付きデプロイ** — `gcloud beta run deploy admin-ui --iap …`。`beta` が付くのは「Cloud Run に直接 IAP を付ける」機能がベータ段階のコマンド群にあるためです。`--iap` を付けると、サービスの前段に IAP が立ち、**Google アカウントでログインし、かつ許可された人**でなければアプリに一切到達できなくなります。従来 IAP はロードバランサー必須でしたが、この直結方式なら Cloud Run 単体で使えます。サービスアカウントは `admin-sa`(Firestore 読み書きと画像閲覧のみ可能)。環境変数は `PROJECT_ID` / `PIPELINE_API_URL` / `GCS_BUCKET` の 3 つだけで、**シークレットは一切渡しません** — 管理画面は SA の権限(ADC)で Firestore にアクセスし、外部 API キーを必要とする処理はすべて pipeline-api 側に寄せているためです。
+**③ IAP 付きデプロイ** — `gcloud beta run deploy admin-ui --iap …`。`beta` が付くのは「Cloud Run に直接 IAP を付ける」機能がベータ段階のコマンド群にあるためです。`--iap` を付けると、サービスの前段に IAP が立ち、**Google アカウントでログインし、かつ許可された人**でなければアプリに一切到達できなくなります。従来 IAP はロードバランサー必須でしたが、この直結方式なら Cloud Run 単体で使えます。サービスアカウントは `admin-sa`(Firestore 読み書きと画像閲覧のみ可能)。環境変数は `PROJECT_ID` / `PIPELINE_API_URL` / `GCS_BUCKET` の 3 つが基本で、**渡すシークレットは多くても `LANGSMITH_API_KEY` 1 つだけ**です(存在するときのみ。§6.2)。外部 API キーを必要とする処理はすべて pipeline-api 側に寄せる原則は変わっておらず、LangSmith が例外なのは「**副作用のない読み取り**を表示のために行うだけで、pipeline-api を挟む理由が無い」ためです(トレースの正は Firestore ではなく LangSmith にあるので、`data.ts` の Firestore 経路にも乗りません)。
 
 **④ IAP へのユーザー許可** — `gcloud beta iap web add-iam-policy-binding --member="user:${ADMIN_EMAIL}" --role=roles/iap.httpsResourceAccessor --resource-type=cloud-run --service=admin-ui`。IAP の門番に「このメールアドレスの人は通してよい」と教える操作で、`roles/iap.httpsResourceAccessor` が「IAP 越しに HTTPS アクセスしてよい」ロールです。`--resource-type=cloud-run --service=admin-ui` で対象を admin-ui サービスに限定しています。通過したユーザーのメールは IAP がヘッダー `x-goog-authenticated-user-email` に載せ、`admin/src/lib/iap.ts` がそれを読んで承認者名などに使います。
 
@@ -324,6 +324,22 @@ fi
 - **キルスイッチとしての性質**: `--set-env-vars`/`--set-secrets` は毎デプロイ**全置換**(§6.1・CLAUDE.md 落とし穴)なので、シークレットを削除/無効化して再デプロイすれば3つの env がまとめて消え、トレーシングが確実に止まる。手動 `gcloud run jobs update` で env を足しても次のデプロイで消えるのは同じ理由。
 - `LANGSMITH_ENDPOINT` は設定しない(既定 = LangSmith の US SaaS)。プロンプト・生成文が米国へ送られることはユーザー承認済み → [runbook](../../runbook.md)。
 
+#### admin-ui 側にも同じゲートがある(`11-deploy-admin.sh`)
+
+管理画面のレポート実行詳細ページが LangSmith を**読み戻して**トレース木を描く([07-admin-ui.md](07-admin-ui.md) §6.9)ため、同じキーが admin-ui にも要る。
+
+```bash
+SECRET_FLAG=(--clear-secrets)
+if gcloud secrets describe langsmith-api-key >/dev/null 2>&1; then
+  SECRET_FLAG=(--set-secrets="LANGSMITH_API_KEY=langsmith-api-key:latest")
+  ADMIN_ENV+=",LANGSMITH_PROJECT=${PROJECT_ID}"
+fi
+gcloud beta run deploy admin-ui … --set-env-vars="$ADMIN_ENV" "${SECRET_FLAG[@]}"
+```
+
+- **pipeline 側との違いは3つ**。①`LANGSMITH_TRACING` は入れない — admin は**送信せず読むだけ**なので、SDK のトレース ON/OFF フラグは無関係(`langsmith.ts` はキーの有無だけを見る)。②`--set-secrets` は**配列で渡す**。admin-ui はこれまでシークレットを1つも持たなかったので、キーが無い場合に渡すべきは空文字列ではなく `--clear-secrets` であり、両者はフラグ自体が変わる。③ 読み取りは admin-sa の権限で行うので、**この if の中で admin-sa に `secretAccessor` を付ける**(admin-sa が読める唯一のシークレット。他のキーは pipeline-sa だけが持つ原則を崩さない)。付与を `01-secrets.sh` ではなくここに置く理由は 4.2 —「`deploy.sh` が 01 をスキップする」ため、あちらに置いた付与は普通のデプロイでは一度も実行されない。
+- **キルスイッチは pipeline と共通**: シークレットを消して `./deploy.sh` すると、pipeline のトレース送信が止まると同時に `--clear-secrets` が admin のキーを落とし、トレースカードが消える。**「送信は止まったのに管理画面には出続ける」状態を作らない**のが狙い(逆に言えば、片方だけ残すことはできない)。
+
 ## 7. エラー時の挙動と再実行の考え方
 
 全スクリプトは `set -euo pipefail`(3.2)により**失敗した行で即停止**します。途中まで作られた状態で止まっても、全リソースが冪等パターンで守られているため、**原因を直してから同じスクリプトを頭から再実行すれば続きから復旧**できます。「途中から再開する」ための特別な手順は不要です。
@@ -343,7 +359,7 @@ fi
 | やりたいこと | 触る場所(順序どおり) |
 |---|---|
 | **ジョブを追加する** | ① `pipeline/app/jobs/<新名>.py` を実装 → ② `infra/env.sh` の `JOBS` 配列に**ハイフン区切り**で追加 → ③ 管理画面から即時実行させるなら `pipeline/app/main.py` の `JOB_MODULES` と `shared/constants.json` の `jobTypes` に**アンダースコア区切り**で追加(admin は prebuild 反映のため `admin/src/lib/shared-constants.json` を更新・コミットして再ビルド) → ④ リトライ可否を判断し、必要なら `infra/10-deploy-pipeline.sh` の retries 分岐へ(既定 0 のままが原則) → ⑤ 定時実行するなら `infra/20-schedulers.sh` に `create_sched` を 1 行追加 → ⑥ `./10-deploy-pipeline.sh` と `./20-schedulers.sh` を再実行 |
-| **シークレットを追加する** | `infra/01-secrets.sh` に `create_or_update` と権限付与ループへの追加 → `infra/10-deploy-pipeline.sh` の `SECRET_ENV`(任意なら describe の if 分岐で) → `pipeline/app/config.py` に対応フィールド → 01 と 10 を再実行 |
+| **シークレットを追加する** | `infra/01-secrets.sh` に `create_or_update` を追加(値の登録のみ) → `infra/10-deploy-pipeline.sh` の `SECRET_ENV` **と `SECRETS` 配列の両方**に追加(任意なら describe の if 分岐の中で。`SECRETS` が pipeline-sa への `secretAccessor` 付与ループを駆動するので、**片方だけ足すと `Permission denied on secret` でデプロイが落ちる**) → `pipeline/app/config.py` に対応フィールド → 01 と 10 を再実行 |
 | **スケジュール(時刻)を変える** | `infra/20-schedulers.sh` の cron 値を編集して再実行(update が効く)。[../04-parameters.md](../04-parameters.md) の一覧も更新 |
 | **Cloud Run のメモリ等を変える** | `infra/10-deploy-pipeline.sh` / `infra/11-deploy-admin.sh` の該当フラグを編集して再実行。値の正は [../04-parameters.md](../04-parameters.md) |
 | **管理者(管理画面に入れる人)を足す** | `gcloud beta iap web add-iam-policy-binding` を追加メールで実行(`infra/11-deploy-admin.sh` の④と同形)。既定管理者は `env.sh` の `ADMIN_EMAIL` |
